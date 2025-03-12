@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,6 +16,49 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 )
+
+// ErrorResponse defines the structure of an error response
+type ErrorResponseBody struct {
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
+// jsonErrorResponse sends a standardized JSON error response
+func ErrorResponse(w http.ResponseWriter, errMsg string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(ErrorResponseBody{
+		Error:   http.StatusText(statusCode), // e.g., "Unauthorized"
+		Message: errMsg,
+	})
+}
+
+// AuthMiddleware checks for a valid Bearer token in the Authorization header
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expectedToken := os.Getenv("AUTH_TOKEN")
+		if expectedToken == "" {
+			ErrorResponse(w, "Server misconfiguration: AUTH_TOKEN not set", http.StatusInternalServerError)
+			return
+		}
+
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			ErrorResponse(w, "Missing Authorization header", http.StatusUnauthorized)
+			return
+		}
+
+		// Check for Bearer prefix and extract the token
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" || parts[1] != expectedToken {
+			ErrorResponse(w, "Invalid or missing token", http.StatusUnauthorized)
+			return
+		}
+
+		// Token is valid, proceed with the request
+		next.ServeHTTP(w, r)
+	})
+}
 
 func (s *Server) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
@@ -28,6 +72,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           300,
 	}))
 
+	r.Use(AuthMiddleware) // Apply authentication
+
 	r.Get("/", s.HelloWorldHandler)
 
 	// Host-related routes
@@ -40,10 +86,17 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Route("/vm", func(r chi.Router) {
 		r.Post("/", s.CreateVMHandler) // Create a VM.
 		r.Route("/{id}", func(r chi.Router) {
-			r.Get("/", s.RetrieveVMHandler)        // Get information about VM.
-			r.Patch("/", s.UpdateVMHandler)        // Update a VM config.
-			r.Delete("/", s.DeleteVMHandler)       // Delete a VM.
-			r.Post("/migrate", s.MigrateVMHandler) // Migrate VM to new hypervisor
+			r.Get("/", s.RetrieveVMHandler)          // Get information about VM.
+			r.Patch("/", s.UpdateVMHandler)          // Update a VM config.
+			r.Delete("/", s.DeleteVMHandler)         // Delete a VM.
+			r.Post("/migrate", s.MigrateVMHandler)   // Migrate VM to new hypervisor
+			r.Post("/power_on", s.MigrateVMHandler)  // Turn on the VM
+			r.Post("/reboot", s.MigrateVMHandler)    // Reboot the VM
+			r.Post("/shutdowm", s.MigrateVMHandler)  // Shutdown the VM
+			r.Post("/power_off", s.MigrateVMHandler) // Power off the VM
+			r.Post("/elevate", s.MigrateVMHandler)   // Snapshot the VM
+			r.Post("/commit", s.MigrateVMHandler)    // Commit snapshot changes the VM
+			r.Post("/revert", s.MigrateVMHandler)    // Revert snapshot changes the VM
 		})
 	})
 
@@ -78,21 +131,21 @@ type DiskUsageStat struct {
 func (s *Server) SystemStatsHandler(w http.ResponseWriter, r *http.Request) {
 	// Ensure the request is a POST request
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		ErrorResponse(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Decode JSON request
 	var req DiskStatsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON request", http.StatusBadRequest)
+		ErrorResponse(w, "Invalid JSON request", http.StatusBadRequest)
 		log.Printf("error decoding request body: %v", err)
 		return
 	}
 
 	// Validate that mount points are provided
 	if len(req.MountPoints) == 0 {
-		http.Error(w, "No mount points provided", http.StatusBadRequest)
+		ErrorResponse(w, "No mount points provided", http.StatusBadRequest)
 		return
 	}
 
@@ -150,7 +203,7 @@ func (s *Server) SystemStatsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
 		log.Printf("error marshalling response: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		ErrorResponse(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }
 
@@ -199,13 +252,13 @@ func (s *Server) CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse request (same as before)
 	var req VMRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		ErrorResponse(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	// Validate request (same as before)
 	if req.ID == "" || req.CPUs <= 0 || req.MemoryMB <= 0 {
-		http.Error(w, "Missing required VM parameters", http.StatusBadRequest)
+		ErrorResponse(w, "Missing required VM parameters", http.StatusBadRequest)
 		return
 	}
 
@@ -215,19 +268,19 @@ func (s *Server) CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Check if the directory already exists
 	if _, err := os.Stat(vmDir); err == nil {
 		// Directory already exists
-		http.Error(w, "VM directory already exists", http.StatusConflict)
+		ErrorResponse(w, "VM directory already exists", http.StatusConflict)
 		log.Printf("VM directory already exists: %v", vmDir)
 		return
 	} else if !os.IsNotExist(err) {
 		// Error other than "does not exist"
-		http.Error(w, "Failed to check VM directory", http.StatusInternalServerError)
+		ErrorResponse(w, "Failed to check VM directory", http.StatusInternalServerError)
 		log.Printf("Error checking VM directory: %v", err)
 		return
 	}
 
 	// Directory does not exist, create it
 	if err := os.MkdirAll(vmDir, 0755); err != nil {
-		http.Error(w, "Failed to create VM directory", http.StatusInternalServerError)
+		ErrorResponse(w, "Failed to create VM directory", http.StatusInternalServerError)
 		log.Printf("Error creating VM directory: %v", err)
 		return
 	}
@@ -236,13 +289,13 @@ func (s *Server) CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	reqJSONPath := filepath.Join(vmDir, "server.json")
 	reqJSON, err := json.Marshal(req)
 	if err != nil {
-		http.Error(w, "Failed to serialize request body", http.StatusInternalServerError)
+		ErrorResponse(w, "Failed to serialize request body", http.StatusInternalServerError)
 		log.Printf("Error serializing request body: %v", err)
 		return
 	}
 
 	if err := os.WriteFile(reqJSONPath, reqJSON, 0644); err != nil {
-		http.Error(w, "Failed to save request body", http.StatusInternalServerError)
+		ErrorResponse(w, "Failed to save request body", http.StatusInternalServerError)
 		log.Printf("Error writing request body JSON: %v", err)
 		return
 	}
@@ -288,19 +341,19 @@ func (s *Server) DeleteVMHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Check if the directory exists
 	if _, err := os.Stat(vmDir); os.IsNotExist(err) {
-		http.Error(w, "VM directory does not exist", http.StatusNotFound)
+		ErrorResponse(w, "VM directory does not exist", http.StatusNotFound)
 		log.Printf("VM directory not found: %v", vmDir)
 		return
 	} else if err != nil {
 		// Handle other errors (e.g., permission issues)
-		http.Error(w, "Failed to check VM directory", http.StatusInternalServerError)
+		ErrorResponse(w, "Failed to check VM directory", http.StatusInternalServerError)
 		log.Printf("Error checking VM directory: %v", err)
 		return
 	}
 
 	// Delete the directory and its contents
 	if err := os.RemoveAll(vmDir); err != nil {
-		http.Error(w, "Failed to delete VM directory", http.StatusInternalServerError)
+		ErrorResponse(w, "Failed to delete VM directory", http.StatusInternalServerError)
 		log.Printf("Error deleting VM directory: %v", err)
 		return
 	}
