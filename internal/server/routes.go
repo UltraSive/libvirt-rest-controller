@@ -14,8 +14,6 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
-
-	"libvirt-controller/internal/libvirt"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
@@ -34,7 +32,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	// Host-related routes
 	r.Route("/host", func(r chi.Router) {
-		r.Get("/statistics", s.SystemStatsHandler)
+		r.Post("/statistics", s.SystemStatsHandler)
 		// Add more host-related routes here if needed
 	})
 
@@ -64,18 +62,40 @@ func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(jsonResp)
 }
 
-// SystemStats represents the system statistics response structure
-type SystemStats struct {
-	CPUUsage    []float64 `json:"cpu_usage"`
-	MemoryUsage uint64    `json:"memory_used"`
-	MemoryTotal uint64    `json:"memory_total"`
-	DiskUsage   uint64    `json:"disk_used"`
-	DiskTotal   uint64    `json:"disk_total"`
-	Uptime      uint64    `json:"uptime"`
+// DiskStatsRequest represents the expected request body structure
+type DiskStatsRequest struct {
+	MountPoints []string `json:"mount_points"`
 }
 
-// SystemStatsHandler retrieves system statistics
+// DiskUsageStat represents disk usage for a specific mount point
+type DiskUsageStat struct {
+	MountPoint string `json:"mount_point"`
+	Used       uint64 `json:"disk_used"`
+	Total      uint64 `json:"disk_total"`
+}
+
+// SystemStatsHandler handles system statistics retrieval with disk mount points
 func (s *Server) SystemStatsHandler(w http.ResponseWriter, r *http.Request) {
+	// Ensure the request is a POST request
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Decode JSON request
+	var req DiskStatsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON request", http.StatusBadRequest)
+		log.Printf("error decoding request body: %v", err)
+		return
+	}
+
+	// Validate that mount points are provided
+	if len(req.MountPoints) == 0 {
+		http.Error(w, "No mount points provided", http.StatusBadRequest)
+		return
+	}
+
 	// Get CPU usage
 	cpuPercentages, err := cpu.Percent(0, false)
 	if err != nil {
@@ -90,13 +110,6 @@ func (s *Server) SystemStatsHandler(w http.ResponseWriter, r *http.Request) {
 		memStats = &mem.VirtualMemoryStat{}
 	}
 
-	// Get disk usage
-	diskStats, err := disk.Usage("/")
-	if err != nil {
-		log.Printf("error getting disk stats: %v", err)
-		diskStats = &disk.UsageStat{}
-	}
-
 	// Get system uptime
 	hostStats, err := host.Info()
 	if err != nil {
@@ -104,25 +117,41 @@ func (s *Server) SystemStatsHandler(w http.ResponseWriter, r *http.Request) {
 		hostStats = &host.InfoStat{}
 	}
 
-	stats := SystemStats{
+	// Collect disk usage for specified mount points
+	var diskUsageStats []DiskUsageStat
+	for _, mount := range req.MountPoints {
+		diskStats, err := disk.Usage(mount)
+		if err != nil {
+			log.Printf("error getting disk stats for mount %s: %v", mount, err)
+			continue
+		}
+		diskUsageStats = append(diskUsageStats, DiskUsageStat{
+			MountPoint: mount,
+			Used:       diskStats.Used,
+			Total:      diskStats.Total,
+		})
+	}
+
+	stats := struct {
+		CPUUsage    []float64       `json:"cpu_usage"`
+		MemoryUsage uint64          `json:"memory_used"`
+		MemoryTotal uint64          `json:"memory_total"`
+		Uptime      uint64          `json:"uptime"`
+		DiskUsage   []DiskUsageStat `json:"disk_usage"`
+	}{
 		CPUUsage:    cpuPercentages,
 		MemoryUsage: memStats.Used,
 		MemoryTotal: memStats.Total,
-		DiskUsage:   diskStats.Used,
-		DiskTotal:   diskStats.Total,
 		Uptime:      hostStats.Uptime,
+		DiskUsage:   diskUsageStats,
 	}
 
 	// Encode response
-	jsonResp, err := json.Marshal(stats)
-	if err != nil {
-		log.Printf("error marshalling stats: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(jsonResp)
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		log.Printf("error marshalling response: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
 }
 
 // VMRequest represents the expected JSON structure for VM creation
@@ -200,15 +229,6 @@ func (s *Server) CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	if err := os.MkdirAll(vmDir, 0755); err != nil {
 		http.Error(w, "Failed to create VM directory", http.StatusInternalServerError)
 		log.Printf("Error creating VM directory: %v", err)
-		return
-	}
-
-	// Generate XML
-	xmlConfig := libvirt.GenerateLibvirtXML(req.ID, req.MemoryMB, req.CPUs)
-	xmlPath := filepath.Join(vmDir, "server.xml")
-	if err := os.WriteFile(xmlPath, []byte(xmlConfig), 0644); err != nil {
-		http.Error(w, "Failed to write VM XML config", http.StatusInternalServerError)
-		log.Printf("Error writing VM XML: %v", err)
 		return
 	}
 
