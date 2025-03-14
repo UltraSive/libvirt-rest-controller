@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"libvirt-controller/internal/libvirt"
 	"libvirt-controller/internal/server/utils"
 
 	"github.com/go-chi/chi/v5"
@@ -96,12 +97,12 @@ func downloadAndResizeImage(url, path string, sizeGB int) error {
 
 // Request struct to handle expected JSON fields
 type CreateVMRequest struct {
-	VM struct {
-		ID       string      `json:"id"`
-		Template *VMTemplate `json:"template,omitempty"`
-		Disks    []VMDisk    `json:"disks,omitempty"`
-	} `json:"vm"`
-	XMLConfig string `json:"xmlConfig"`
+	/*VM struct {
+		//ID string `json:"id"`
+		//Template *VMTemplate `json:"template,omitempty"`
+		//Disks    []VMDisk    `json:"disks,omitempty"`
+	} `json:"vm"`*/
+	//XMLConfig string `json:"xmlConfig"`
 }
 
 type VMTemplate struct {
@@ -115,78 +116,92 @@ type VMDisk struct {
 
 // CreateVMHandler handles VM creation
 func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
-	var req CreateVMRequest
+	// Read raw request body
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		utils.JSONErrorResponse(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
 
 	// Decode JSON request
+	var req CreateVMRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.JSONErrorResponse(w, "Invalid JSON", http.StatusBadRequest)
+		log.Println("JSON Unmarshal error:", err) // Print error for debugging
 		return
 	}
 
 	// Validate required fields
-	if req.VM.ID == "" {
+	/*if req.VM.ID == "" {
 		utils.JSONErrorResponse(w, "Missing 'vm.id'", http.StatusBadRequest)
 		return
 	}
 	if req.XMLConfig == "" {
 		utils.JSONErrorResponse(w, "Missing 'xmlConfig'", http.StatusBadRequest)
 		return
-	}
-	if req.VM.Template == nil || req.VM.Template.ImageURL == "" {
+	}*/
+	/*if req.VM.Template == nil || req.VM.Template.ImageURL == "" {
 		utils.JSONErrorResponse(w, "Missing 'template.imageURL'", http.StatusBadRequest)
 		return
-	}
-	if len(req.VM.Disks) == 0 {
+	}*/
+	/*if len(req.VM.Disks) == 0 {
 		utils.JSONErrorResponse(w, "Missing 'disks'", http.StatusBadRequest)
 		return
-	}
+	}*/
 
 	// Create VM directory
-	vmDir := filepath.Join("/home/sive/vm", req.VM.ID)
+	/*vmDir := filepath.Join("/home/sive/vm", req.VM.ID)
 	if err := createVMDirectory(vmDir); err != nil {
 		utils.JSONErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
+	}*/
 
 	// Save JSON request
-	if err := saveFile(vmDir, "server.json", req); err != nil {
+	if err := saveFile("/home/sive/vm/test", "server.json", rawBody); err != nil {
 		utils.JSONErrorResponse(w, "Failed to save request body", http.StatusInternalServerError)
 		return
 	}
 
 	// Save XML config
-	if err := os.WriteFile(filepath.Join(vmDir, "server.xml"), []byte(req.XMLConfig), 0644); err != nil {
+	/*if err := os.WriteFile(filepath.Join("/home/sive/vm/test", "server.xml"), []byte(req.XMLConfig), 0644); err != nil {
 		utils.JSONErrorResponse(w, "Failed to save XML config", http.StatusInternalServerError)
 		return
-	}
+	}*/
 
 	// Process disk image
-	firstDisk := req.VM.Disks[0]
+	/*firstDisk := req.VM.Disks[0]
 	imagePath := filepath.Join(vmDir, fmt.Sprintf("%.0f.img", firstDisk.ID))
 	if err := downloadAndResizeImage(req.VM.Template.ImageURL, imagePath, firstDisk.Capacity); err != nil {
 		utils.JSONErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
+	}*/
 
 	// Respond
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "VM configuration created",
-		"vm_id":   req.VM.ID,
-		"path":    vmDir,
+		//"vm_id":   req.VM.ID,
+		//"path":    vmDir,
 	})
 }
 
 func RetrieveVMHandler(w http.ResponseWriter, r *http.Request) {
-	resp := make(map[string]string)
-	resp["message"] = "Hello World"
-
-	jsonResp, err := json.Marshal(resp)
+	conn, err := libvirt.GetConnection()
 	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
+		log.Fatalf("Failed to get libvirt connection: %v", err)
 	}
 
-	_, _ = w.Write(jsonResp)
+	domains, _, err := conn.ConnectListAllDomains(-1, 0)
+	if err != nil {
+		log.Fatalf("Failed to list domains: %v", err)
+	}
+
+	// Log the count of domains
+	log.Printf("Total domains: %d", len(domains))
+
+	for _, domain := range domains {
+		log.Println("Domain:", domain.Name)
+	}
 }
 
 func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {

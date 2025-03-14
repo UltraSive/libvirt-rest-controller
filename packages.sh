@@ -1,1 +1,2 @@
-apt install bridge-utils qemu-kvm qemu-utils libvirt-daemon -y
+apt install bridge-utils qemu-kvm qemu-utils libvirt-clients libvirt-daemon-system virtinst -y
+sudo setfacl -m user:$USER:rw /var/run/libvirt/libvirt-sock
