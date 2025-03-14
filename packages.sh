@@ -1,0 +1,1 @@
+apt install bridge-utils qemu-kvm qemu-utils libvirt-daemon -y

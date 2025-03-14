@@ -2,9 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -207,106 +210,196 @@ func (s *Server) SystemStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// VMRequest represents the expected JSON structure for VM creation
-type VMRequest struct {
-	ID        string           `json:"id"`
-	ImageURL  string           `json:"image_url"`
-	CPUs      int              `json:"cpus"`
-	MemoryMB  int              `json:"memory_mb"`
-	Networks  []NetworkConfig  `json:"networks"`   // Network interfaces
-	Storage   []StorageConfig  `json:"storage"`    // Additional disks
-	CloudInit *CloudInitConfig `json:"cloud_init"` // Cloud-init user data
-	XMLConfig string           `json:"xml_config"` // Config tto write to disk
+// DownloadFile downloads a file from a given URL and saves it to a specified path
+func DownloadFile(url, filePath string) error {
+	// Create the file
+	out, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// Get the data
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Check server response
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download file: %s", resp.Status)
+	}
+
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// NetworkConfig represents a network interface
-type NetworkConfig struct {
-	Type       string `json:"type"`        // "bridge", "nat", "macvtap", "direct"
-	Network    string `json:"network"`     // Network name or bridge name
-	MacAddress string `json:"mac_address"` // Optional custom MAC address
-	IP         string `json:"ip"`          // Optional static IP assignment
-}
+// ResizeDisk resizes the disk image to the desired size in GB.
+func ResizeDisk(imagePath string, sizeGB int) error {
+	// Convert size in GB to the required format for qemu-img (e.g., "10G" for 10 GB)
+	size := fmt.Sprintf("%dG", sizeGB)
 
-// StorageConfig represents additional storage devices
-type StorageConfig struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`       // "disk", "cdrom", "nvme"
-	Path      string `json:"path"`       // File path or volume name
-	TargetDev string `json:"target_dev"` // Target device (e.g., vdb, vdc)
-	ReadOnly  bool   `json:"read_only"`  // Mount as read-only
-	//CacheMode   string `json:"cache_mode"`   // "none", "writeback", "writethrough"
-	//DiskBus     string `json:"disk_bus"`     // "virtio", "sata", "scsi"
-	CapacityGB int `json:"capacity_gb"` // Capacity of the disk in GB
-}
+	// Construct the qemu-img command to resize the disk
+	cmd := exec.Command("qemu-img", "resize", imagePath, size)
 
-// CloudInitConfig represents cloud-init user data for VM customization
-type CloudInitConfig struct {
-	UserData      string `json:"user_data"`       // Cloud-init YAML user data
-	MetaData      string `json:"meta_data"`       // Cloud-init metadata
-	NetworkConfig string `json:"network_config"`  // Cloud-init network config
-	EnableSSHKeys bool   `json:"enable_ssh_keys"` // Inject SSH keys
+	// Run the command
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to resize disk image: %w", err)
+	}
+
+	log.Printf("Successfully resized the disk image to %d GB", sizeGB)
+	return nil
 }
 
 // CreateVMHandler handles VM creation
 func (s *Server) CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse request (same as before)
-	var req VMRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		ErrorResponse(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Validate request (same as before)
-	if req.ID == "" || req.CPUs <= 0 || req.MemoryMB <= 0 {
-		ErrorResponse(w, "Missing required VM parameters", http.StatusBadRequest)
-		return
-	}
-
-	// Create VM directory
-	vmDir := filepath.Join("/home/sive/vm", req.ID)
-
-	// Check if the directory already exists
-	if _, err := os.Stat(vmDir); err == nil {
-		// Directory already exists
-		ErrorResponse(w, "VM directory already exists", http.StatusConflict)
-		log.Printf("VM directory already exists: %v", vmDir)
-		return
-	} else if !os.IsNotExist(err) {
-		// Error other than "does not exist"
-		ErrorResponse(w, "Failed to check VM directory", http.StatusInternalServerError)
-		log.Printf("Error checking VM directory: %v", err)
-		return
-	}
-
-	// Directory does not exist, create it
-	if err := os.MkdirAll(vmDir, 0755); err != nil {
-		ErrorResponse(w, "Failed to create VM directory", http.StatusInternalServerError)
-		log.Printf("Error creating VM directory: %v", err)
-		return
-	}
-
-	// Save request body as a JSON file inside the VM directory so we can keep track of state
-	reqJSONPath := filepath.Join(vmDir, "server.json")
-	reqJSON, err := json.Marshal(req)
+	var req interface{}
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		ErrorResponse(w, "Failed to serialize request body", http.StatusInternalServerError)
-		log.Printf("Error serializing request body: %v", err)
+		ErrorResponse(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	if err := os.WriteFile(reqJSONPath, reqJSON, 0644); err != nil {
-		ErrorResponse(w, "Failed to save request body", http.StatusInternalServerError)
-		log.Printf("Error writing request body JSON: %v", err)
+	// Type assertion for the root object (map)
+	dataMap, dataPresent := req.(map[string]interface{})
+	if !dataPresent {
+		ErrorResponse(w, "Error: Unable to assert root object", http.StatusBadRequest)
 		return
 	}
 
-	// Respond
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "VM configuration created",
-		"vm_id":   req.ID,
-		"path":    vmDir,
-	})
+	if vmMap, vmPresent := dataMap["vm"].(map[string]interface{}); vmPresent {
+		// Ensure "id" is a string before using it
+		id, idPresent := vmMap["id"].(string)
+		if !idPresent {
+			ErrorResponse(w, "Invalid or missing 'id' field", http.StatusBadRequest)
+			return
+		}
+
+		// Create VM directory
+		vmDir := filepath.Join("/home/sive/vm", id)
+
+		// Check if the directory already exists
+		if _, err := os.Stat(vmDir); err == nil {
+			// Directory already exists
+			ErrorResponse(w, "VM directory already exists", http.StatusConflict)
+			log.Printf("VM directory already exists: %v", vmDir)
+			return
+		} else if !os.IsNotExist(err) {
+			// Error other than "does not exist"
+			ErrorResponse(w, "Failed to check VM directory", http.StatusInternalServerError)
+			log.Printf("Error checking VM directory: %v", err)
+			return
+		}
+
+		// Directory does not exist, create it
+		if err := os.MkdirAll(vmDir, 0755); err != nil {
+			ErrorResponse(w, "Failed to create VM directory", http.StatusInternalServerError)
+			log.Printf("Error creating VM directory: %v", err)
+			return
+		}
+
+		// Save request body as a JSON file inside the VM directory so we can keep track of state
+		reqJSONPath := filepath.Join(vmDir, "server.json")
+		reqJSON, err := json.Marshal(req)
+		if err != nil {
+			ErrorResponse(w, "Failed to serialize request body", http.StatusInternalServerError)
+			log.Printf("Error serializing request body: %v", err)
+			return
+		}
+
+		if err := os.WriteFile(reqJSONPath, reqJSON, 0644); err != nil {
+			ErrorResponse(w, "Failed to save request body", http.StatusInternalServerError)
+			log.Printf("Error writing request body JSON: %v", err)
+			return
+		}
+
+		// Write the Libvirt XML config to the directory
+		reqXMLPath := filepath.Join(vmDir, "server.xml")
+		xmlConfig, xmlPresent := dataMap["xmlConfig"].(string)
+		if !xmlPresent {
+			ErrorResponse(w, "Error finding the XML config", http.StatusBadRequest)
+			return
+		}
+
+		if err := os.WriteFile(reqXMLPath, []byte(xmlConfig), 0644); err != nil {
+			ErrorResponse(w, "Failed to save XML config", http.StatusInternalServerError)
+			log.Printf("Error writing XML config: %v", err)
+			return
+		}
+
+		// Pull the disk image from the template URL
+		if templateMap, templatePresent := vmMap["template"].(map[string]interface{}); templatePresent {
+			// Ensure "id" is a string before using it
+			imageURL, imagePresent := templateMap["imageURL"].(string)
+			if !imagePresent {
+				ErrorResponse(w, "Invalid or missing 'imageURL' field", http.StatusBadRequest)
+				return
+			}
+			log.Printf("Image URL: %s", imageURL)
+
+			if disksMap, disksPresent := vmMap["disks"].([]interface{}); disksPresent && len(disksMap) > 0 {
+				log.Printf("Disks present")
+
+				// Ensure the first disk has a valid ID
+				if disk, ok := disksMap[0].(map[string]interface{}); ok {
+					if id, idPresent := disk["id"].(float64); idPresent {
+						imageID := fmt.Sprintf("%v", id)
+						imagePath := filepath.Join(vmDir, imageID+".img")
+						log.Printf("Image path: %s", imagePath)
+
+						// Pull the image URL from the template config
+						if templateMap, templatePresent := vmMap["template"].(map[string]interface{}); templatePresent {
+							if imageURL, imagePresent := templateMap["imageURL"].(string); imagePresent {
+								log.Printf("Image URL: %s", imageURL)
+
+								// Download the image
+								imageDownloadError := DownloadFile(imageURL, imagePath)
+								if imageDownloadError != nil {
+									ErrorResponse(w, "Failed to download image", http.StatusBadRequest)
+									return
+								}
+
+								// Resize the image to a specific size (e.g., 20GB)
+								if capacity, ok := disk["capacity"].(float64); ok {
+									desiredSizeGB := int(capacity) // Convert to int
+									resizeError := ResizeDisk(imagePath, desiredSizeGB)
+									if resizeError != nil {
+										ErrorResponse(w, fmt.Sprintf("Failed to resize image: %s", resizeError.Error()), http.StatusInternalServerError)
+										return
+									}
+								} else {
+									ErrorResponse(w, "Invalid or missing 'capacity' field", http.StatusBadRequest)
+									return
+								}
+							}
+						}
+					} else {
+						ErrorResponse(w, "Invalid or missing 'id' field in disk", http.StatusBadRequest)
+						return
+					}
+				} else {
+					ErrorResponse(w, "Error processing disk information", http.StatusBadRequest)
+					return
+				}
+			}
+		}
+
+		// Respond
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": "VM configuration created",
+			"vm_id":   id,
+			"path":    vmDir,
+		})
+	}
 }
 
 func (s *Server) RetrieveVMHandler(w http.ResponseWriter, r *http.Request) {
