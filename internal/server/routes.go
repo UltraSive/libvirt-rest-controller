@@ -26,8 +26,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.Use(AuthMiddleware) // Apply authentication
 
-	r.Get("/", s.HelloWorldHandler)
-
 	// Host-related routes
 	r.Route("/host", func(r chi.Router) {
 		r.Post("/statistics", handlers.SystemStatsHandler)
