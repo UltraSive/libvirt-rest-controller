@@ -1,37 +1,42 @@
 package libvirt
 
 import (
-	"bytes"
-	"fmt"
-	"os/exec"
+	"libvirt-controller/internal/cmdutil"
 )
-
-// ExecuteCommand constructs and executes the virsh command
-func ExecuteCommand(args ...string) (string, error) {
-	cmd := exec.Command("virsh", args...)
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	if err != nil {
-		return "", fmt.Errorf("command execution failed: %s, %w", stderr.String(), err)
-	}
-	return out.String(), nil
-}
 
 // DefineDomain defines a domain from an XML file
 func DefineDomain(xmlConfigPath string) (string, error) {
-	return ExecuteCommand("define", xmlConfigPath)
+	return cmdutil.Execute("virsh", "define", xmlConfigPath)
 }
 
-// StartDomain starts a domain
+func UndefineDomain(domainName string) (string, error) {
+	return cmdutil.Execute("virsh", "undefine", domainName)
+}
+
 func StartDomain(domainName string) (string, error) {
-	return ExecuteCommand("start", domainName)
+	return cmdutil.Execute("virsh", "start", domainName)
 }
 
-// StopDomain shuts down a domain
+func RebootDomain(domainName string) (string, error) {
+	return cmdutil.Execute("virsh", "reboot", domainName)
+}
+
 func StopDomain(domainName string) (string, error) {
-	return ExecuteCommand("shutdown", domainName)
+	return cmdutil.Execute("virsh", "shutdown", domainName)
+}
+
+func DestroyDomain(domainName string) (string, error) {
+	return cmdutil.Execute("virsh", "destroy", domainName)
+}
+
+func SuspendDomain(domainName string) (string, error) {
+	return cmdutil.Execute("virsh", "suspend", domainName)
+}
+
+func ResumeDomain(domainName string) (string, error) {
+	return cmdutil.Execute("virsh", "resume", domainName)
+}
+
+func GetDomainInfo(domainName string) (string, error) {
+	return cmdutil.Execute("virsh", "dominfo", domainName)
 }
