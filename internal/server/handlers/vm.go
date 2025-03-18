@@ -7,115 +7,15 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 
+	"libvirt-controller/internal/filesystem"
 	"libvirt-controller/internal/libvirt"
+	"libvirt-controller/internal/qemu"
 	"libvirt-controller/internal/server/utils"
 
 	"github.com/go-chi/chi/v5"
 )
-
-func createVMDirectory(path string) error {
-	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("VM directory already exists")
-	}
-	if err := os.MkdirAll(path, 0777); err != nil {
-		log.Printf("Error creating VM directory: %v", err)
-		return fmt.Errorf("Failed to create VM directory")
-	}
-	return nil
-}
-
-func saveFile(dir, filename string, data []byte) error {
-	filePath := filepath.Join(dir, filename)
-	return os.WriteFile(filePath, data, 0644) // Write raw bytes directly
-}
-
-// DownloadFile downloads a file from a given URL and saves it to a specified path
-func DownloadFile(url, name string, mode os.FileMode, uid int, gid int) error {
-	// Create the file
-	out, err := os.Create(name)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// Get the data
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Check server response
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download file: %s", resp.Status)
-	}
-
-	// Write the body to file
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return err
-	}
-
-	// Look up the qemu user
-	/*qemuUser, err := user.Lookup("qemu")
-	if err != nil {
-		return fmt.Errorf("failed to lookup user 'qemu': %v", err)
-	}*/
-
-	// Convert UID and GID to integers
-	/*uid := 64055 //strconv.Atoi(qemuUser.Uid)
-	if err != nil {
-		return fmt.Errorf("failed to convert UID: %v", err)
-	}
-	gid := 994 //strconv.Atoi(qemuUser.Gid)
-	if err != nil {
-		return fmt.Errorf("failed to convert GID: %v", err)
-	}*/
-
-	// Set the file's UID and GID to qemu
-	if err := os.Chown(name, uid, gid); err != nil {
-		return fmt.Errorf("failed to change file ownership: %v", err)
-	}
-
-	// Set file permissions
-	err = os.Chmod(name, mode)
-	if err != nil {
-		return fmt.Errorf("failed to change file permissions: %v", err)
-	}
-
-	return nil
-}
-
-// ResizeDisk resizes the disk image to the desired size in GB.
-func ResizeDisk(imagePath string, sizeGB int) error {
-	// Convert size in GB to the required format for qemu-img (e.g., "10G" for 10 GB)
-	size := fmt.Sprintf("%dG", sizeGB)
-
-	// Construct the qemu-img command to resize the disk
-	cmd := exec.Command("qemu-img", "resize", imagePath, size)
-
-	// Run the command
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to resize disk image: %w", err)
-	}
-
-	log.Printf("Successfully resized the disk image to %d GB", sizeGB)
-	return nil
-}
-
-func downloadAndResizeImage(url, path string, sizeGB int) error {
-	if err := DownloadFile(url, path, 0666, 64055, 994); err != nil {
-		return fmt.Errorf("Failed to download image: %v", err)
-	}
-	if err := ResizeDisk(path, sizeGB); err != nil {
-		return fmt.Errorf("Failed to resize image: %v", err)
-	}
-	return nil
-}
 
 // Request struct to handle expected JSON fields
 type CreateVMRequest struct {
@@ -181,7 +81,7 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Create VM directory
 	vmDir := filepath.Join("/data/vm", vmID)
-	if err := createVMDirectory(vmDir); err != nil {
+	if err := filesystem.CreateDirectory(vmDir, 0755); err != nil {
 		utils.JSONErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -202,7 +102,7 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save JSON request
-	if err := saveFile(vmDir, "server.json", formattedJSON); err != nil {
+	if err := filesystem.SaveFile(vmDir, "server.json", formattedJSON); err != nil {
 		utils.JSONErrorResponse(w, "Failed to save request body", http.StatusInternalServerError)
 		return
 	}
@@ -211,7 +111,7 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	xmlConfig := req.XMLConfig // This is the XML config for the VM
 
 	// Save XML config
-	if err := saveFile(vmDir, "server.xml", []byte(xmlConfig)); err != nil {
+	if err := filesystem.SaveFile(vmDir, "server.xml", []byte(xmlConfig)); err != nil {
 		utils.JSONErrorResponse(w, "Failed to save XML config", http.StatusInternalServerError)
 		return
 	}
@@ -219,11 +119,18 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Process disk image
 	firstDisk := req.VM.Disks[0]
 	imagePath := filepath.Join(vmDir, fmt.Sprintf("%.0f.img", firstDisk.ID))
-	if err := downloadAndResizeImage(req.VM.Template.ImageURL, imagePath, firstDisk.Capacity); err != nil {
-		utils.JSONErrorResponse(w, err.Error(), http.StatusInternalServerError)
+
+	if err := filesystem.DownloadWebFile(req.VM.Template.ImageURL, imagePath, 0660); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to download image from URL %s: %v", req.VM.Template.ImageURL, err), http.StatusInternalServerError)
 		return
 	}
 
+	if err := qemu.ResizeDisk(imagePath, firstDisk.Capacity); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to resize disk at %s: %v", imagePath, err), http.StatusInternalServerError)
+		return
+	}
+
+	// Define and start the VM
 	if _, err := libvirt.DefineDomain(vmDir + "/" + "server.xml"); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to define domain: %s", err.Error()), http.StatusInternalServerError)
 		return
