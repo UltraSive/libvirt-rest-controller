@@ -16,22 +16,11 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func setQEMUOwnership(filePath string) error {
-	// Set ownership to a user/group that libvirt uses (e.g., qemu)
-	// Adjust UID and GID as needed
-	uid, gid := 64055, 994
-	if err := os.Chown(filePath, uid, gid); err != nil {
-		return fmt.Errorf("failed to change ownership: %w", err)
-	}
-
-	return nil
-}
-
 func createVMDirectory(path string) error {
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("VM directory already exists")
 	}
-	if err := os.MkdirAll(path, 0755); err != nil {
+	if err := os.MkdirAll(path, 0777); err != nil {
 		log.Printf("Error creating VM directory: %v", err)
 		return fmt.Errorf("Failed to create VM directory")
 	}
@@ -44,7 +33,7 @@ func saveFile(dir, filename string, data []byte) error {
 }
 
 // DownloadFile downloads a file from a given URL and saves it to a specified path
-func DownloadFile(url, name string, mode os.FileMode) error {
+func DownloadFile(url, name string, mode os.FileMode, uid int, gid int) error {
 	// Create the file
 	out, err := os.Create(name)
 	if err != nil {
@@ -70,10 +59,32 @@ func DownloadFile(url, name string, mode os.FileMode) error {
 		return err
 	}
 
-	/*// Set ownership for directory
-	if err := setQEMUOwnership(name); err != nil {
-		return err
+	// Look up the qemu user
+	/*qemuUser, err := user.Lookup("qemu")
+	if err != nil {
+		return fmt.Errorf("failed to lookup user 'qemu': %v", err)
 	}*/
+
+	// Convert UID and GID to integers
+	/*uid := 64055 //strconv.Atoi(qemuUser.Uid)
+	if err != nil {
+		return fmt.Errorf("failed to convert UID: %v", err)
+	}
+	gid := 994 //strconv.Atoi(qemuUser.Gid)
+	if err != nil {
+		return fmt.Errorf("failed to convert GID: %v", err)
+	}*/
+
+	// Set the file's UID and GID to qemu
+	if err := os.Chown(name, uid, gid); err != nil {
+		return fmt.Errorf("failed to change file ownership: %v", err)
+	}
+
+	// Set file permissions
+	err = os.Chmod(name, mode)
+	if err != nil {
+		return fmt.Errorf("failed to change file permissions: %v", err)
+	}
 
 	return nil
 }
@@ -97,8 +108,8 @@ func ResizeDisk(imagePath string, sizeGB int) error {
 }
 
 func downloadAndResizeImage(url, path string, sizeGB int) error {
-	if err := DownloadFile(url, path, 0666); err != nil {
-		return fmt.Errorf("Failed to download image")
+	if err := DownloadFile(url, path, 0666, 64055, 994); err != nil {
+		return fmt.Errorf("Failed to download image: %v", err)
 	}
 	if err := ResizeDisk(path, sizeGB); err != nil {
 		return fmt.Errorf("Failed to resize image: %v", err)
@@ -169,7 +180,7 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	vmID := req.VM.ID
 
 	// Create VM directory
-	vmDir := filepath.Join("/home/sive/vm", vmID)
+	vmDir := filepath.Join("/data/vm", vmID)
 	if err := createVMDirectory(vmDir); err != nil {
 		utils.JSONErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
