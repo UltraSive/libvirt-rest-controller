@@ -36,17 +36,17 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Route("/vm", func(r chi.Router) {
 		r.Post("/", handlers.CreateVMHandler) // Create a VM.
 		r.Route("/{id}", func(r chi.Router) {
-			r.Get("/", handlers.RetrieveVMHandler)           // Get information about VM.
-			r.Patch("/", handlers.UpdateVMHandler)           // Update a VM config.
-			r.Delete("/", handlers.DeleteVMHandler)          // Delete a VM.
-			r.Post("/migrate", handlers.RetrieveVMHandler)   // Migrate VM to new hypervisor
-			r.Post("/power_on", handlers.RetrieveVMHandler)  // Turn on the VM
-			r.Post("/reboot", handlers.RetrieveVMHandler)    // Reboot the VM
-			r.Post("/shutdowm", handlers.RetrieveVMHandler)  // Shutdown the VM
-			r.Post("/power_off", handlers.RetrieveVMHandler) // Power off the VM
-			r.Post("/elevate", handlers.RetrieveVMHandler)   // Snapshot the VM
-			r.Post("/commit", handlers.RetrieveVMHandler)    // Commit snapshot changes the VM
-			r.Post("/revert", handlers.RetrieveVMHandler)    // Revert snapshot changes the VM
+			r.Get("/", handlers.RetrieveVMHandler)          // Get information about VM.
+			r.Patch("/", handlers.UpdateVMHandler)          // Update a VM config.
+			r.Delete("/", handlers.DeleteVMHandler)         // Delete a VM.
+			r.Post("/boot", handlers.BootVMHandler)         // Turn on the VM
+			r.Post("/restart", handlers.RestartVMHandler)   // Reboot the VM
+			r.Post("/shutdowm", handlers.ShutdownVMHandler) // Shutdown the VM
+			r.Post("/poweroff", handlers.PowerOffVMHandler) // Power off the VM
+			r.Post("/elevate", handlers.ElevateVMHandler)   // Snapshot the VM
+			r.Post("/commit", handlers.CommitVMHandler)     // Commit snapshot changes the VM
+			r.Post("/revert", handlers.RevertVMHandler)     // Revert snapshot changes the VM
+			r.Post("/migrate", handlers.MigrateVMHandler)   // Migrate VM to new hypervisor
 		})
 	})
 

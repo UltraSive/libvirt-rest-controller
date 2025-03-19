@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	"libvirt-controller/internal/filesystem"
@@ -32,8 +31,13 @@ type VMTemplate struct {
 }
 
 type VMDisk struct {
-	ID       float64 `json:"id"`
-	Capacity int     `json:"capacity"`
+	ID       float64           `json:"id"`
+	Capacity int               `json:"capacity"`
+	Storage  HypervisorStorage `json:"storage"`
+}
+
+type HypervisorStorage struct {
+	Path string `json:"path"`
 }
 
 // CreateVMHandler handles VM creation
@@ -78,9 +82,10 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vmID := req.VM.ID
+	firstDisk := req.VM.Disks[0]
 
 	// Create VM directory
-	vmDir := filepath.Join("/data/vm", vmID)
+	vmDir := filepath.Join(firstDisk.Storage.Path, vmID)
 	if err := filesystem.CreateDirectory(vmDir, 0755); err != nil {
 		utils.JSONErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -117,7 +122,6 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process disk image
-	firstDisk := req.VM.Disks[0]
 	imagePath := filepath.Join(vmDir, fmt.Sprintf("%.0f.img", firstDisk.ID))
 
 	if err := filesystem.DownloadWebFile(req.VM.Template.ImageURL, imagePath, 0660); err != nil {
@@ -136,10 +140,10 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := libvirt.StartDomain(vmID); err != nil {
+	/*if _, err := libvirt.StartDomain(vmID); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to start domain: %s", err.Error()), http.StatusInternalServerError)
 		return
-	}
+	}*/
 
 	// Respond
 	w.Header().Set("Content-Type", "application/json")
@@ -185,50 +189,68 @@ func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Get the VM ID from the URL parameter
 	vmID := chi.URLParam(r, "id")
-	vmDir := filepath.Join("/home/sive/vm", vmID)
+	vmDir := filepath.Join("/data/vm", vmID)
 
-	// Check if the directory exists
-	if _, err := os.Stat(vmDir); os.IsNotExist(err) {
-		utils.JSONErrorResponse(w, "VM directory does not exist", http.StatusNotFound)
-		log.Printf("VM directory not found: %v", vmDir)
-		return
-	} else if err != nil {
-		// Handle other errors (e.g., permission issues)
-		utils.JSONErrorResponse(w, "Failed to check VM directory", http.StatusInternalServerError)
-		log.Printf("Error checking VM directory: %v", err)
+	// Destroy the VM.
+	if _, err := libvirt.DestroyDomain(vmID); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to destroy VM: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Delete the directory and its contents
-	if err := os.RemoveAll(vmDir); err != nil {
-		utils.JSONErrorResponse(w, "Failed to delete VM directory", http.StatusInternalServerError)
-		log.Printf("Error deleting VM directory: %v", err)
+	// Undefine the VM.
+	if _, err := libvirt.UndefineDomain(vmID); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to undefine VM: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Return a success response
-	resp := make(map[string]string)
-	resp["message"] = "VM directory deleted successfully"
-	resp["vm_id"] = vmID
+	// Delete the VM directory.
+	if err := filesystem.DeleteDirectory(vmDir); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to delete VM directory: %v", err), http.StatusInternalServerError)
+		return
+	}
 
-	// Respond with a JSON message
+	// Respond with success.
+	jsonResp, _ := json.Marshal(map[string]string{"status": "success"})
 	w.Header().Set("Content-Type", "application/json")
-	jsonResp, err := json.Marshal(resp)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
+	w.Write(jsonResp)
+}
 
-	_, _ = w.Write(jsonResp)
+func BootVMHandler(w http.ResponseWriter, r *http.Request) {
+	// Get the VM ID from the URL parameter
+	//vmID := chi.URLParam(r, "id")
+}
+
+func RestartVMHandler(w http.ResponseWriter, r *http.Request) {
+	// Get the VM ID from the URL parameter
+	//vmID := chi.URLParam(r, "id")
+}
+
+func ShutdownVMHandler(w http.ResponseWriter, r *http.Request) {
+	// Get the VM ID from the URL parameter
+	//vmID := chi.URLParam(r, "id")
+}
+
+func PowerOffVMHandler(w http.ResponseWriter, r *http.Request) {
+	// Get the VM ID from the URL parameter
+	//vmID := chi.URLParam(r, "id")
+}
+
+func ElevateVMHandler(w http.ResponseWriter, r *http.Request) {
+	// Get the VM ID from the URL parameter
+	//vmID := chi.URLParam(r, "id")
+}
+
+func CommitVMHandler(w http.ResponseWriter, r *http.Request) {
+	// Get the VM ID from the URL parameter
+	//vmID := chi.URLParam(r, "id")
+}
+
+func RevertVMHandler(w http.ResponseWriter, r *http.Request) {
+	// Get the VM ID from the URL parameter
+	//vmID := chi.URLParam(r, "id")
 }
 
 func MigrateVMHandler(w http.ResponseWriter, r *http.Request) {
-	resp := make(map[string]string)
-	resp["message"] = "Hello World"
-
-	jsonResp, err := json.Marshal(resp)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
-
-	_, _ = w.Write(jsonResp)
+	// Get the VM ID from the URL parameter
+	//vmID := chi.URLParam(r, "id")
 }
