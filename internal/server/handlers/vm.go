@@ -27,7 +27,14 @@ type CreateVMRequest struct {
 }
 
 type VMTemplate struct {
-	ImageURL string `json:"imageURL"`
+	ImageURL  string    `json:"imageURL"`
+	CloudInit CloudInit `json:"cloudInit"`
+}
+
+type CloudInit struct {
+	MetaData    string `json:"meta-data,omitempty"`
+	UserData    string `json:"user-data,omitempty"`
+	NetworkData string `json:"network-data,omitempty"`
 }
 
 type VMDisk struct {
@@ -121,10 +128,32 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Save CloudInit files if fields are not empty
+	if req.VM.Template.CloudInit.MetaData != "" {
+		if err := filesystem.SaveFile(vmDir, "meta-data", []byte(req.VM.Template.CloudInit.MetaData)); err != nil {
+			utils.JSONErrorResponse(w, "Failed to save 'meta-data' file", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if req.VM.Template.CloudInit.UserData != "" {
+		if err := filesystem.SaveFile(vmDir, "user-data", []byte(req.VM.Template.CloudInit.UserData)); err != nil {
+			utils.JSONErrorResponse(w, "Failed to save 'user-data' file", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if req.VM.Template.CloudInit.NetworkData != "" {
+		if err := filesystem.SaveFile(vmDir, "network-data", []byte(req.VM.Template.CloudInit.NetworkData)); err != nil {
+			utils.JSONErrorResponse(w, "Failed to save 'network-data' file", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Process disk image
 	imagePath := filepath.Join(vmDir, fmt.Sprintf("%.0f.img", firstDisk.ID))
 
-	if err := filesystem.DownloadWebFile(req.VM.Template.ImageURL, imagePath, 0660); err != nil {
+	if err := filesystem.DownloadCachedFile(req.VM.Template.ImageURL, imagePath, "/data/images", 0660); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to download image from URL %s: %v", req.VM.Template.ImageURL, err), http.StatusInternalServerError)
 		return
 	}
@@ -191,10 +220,9 @@ func DeleteVMHandler(w http.ResponseWriter, r *http.Request) {
 	vmID := chi.URLParam(r, "id")
 	vmDir := filepath.Join("/data/vm", vmID)
 
-	// Destroy the VM.
+	// Attempt to destroy the VM. Log the error if it fails.
 	if _, err := libvirt.DestroyDomain(vmID); err != nil {
-		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to destroy VM: %v", err), http.StatusInternalServerError)
-		return
+		log.Printf("Warning: Failed to destroy VM, it might be already off: %v", err)
 	}
 
 	// Undefine the VM.
