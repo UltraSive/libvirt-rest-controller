@@ -40,12 +40,6 @@ func SystemStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate that mount points are provided
-	if len(req.MountPoints) == 0 {
-		utils.JSONErrorResponse(w, "No mount points provided", http.StatusBadRequest)
-		return
-	}
-
 	// Get CPU usage
 	cpuPercentages, err := cpu.Percent(0, false)
 	if err != nil {

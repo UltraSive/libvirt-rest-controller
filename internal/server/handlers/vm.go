@@ -23,12 +23,12 @@ type CreateVMRequest struct {
 		Template *VMTemplate `json:"template"`
 		Disks    []VMDisk    `json:"disks"`
 	} `json:"vm"`
-	XMLConfig string `json:"xmlConfig"`
+	XMLConfig string    `json:"xmlConfig"`
+	CloudInit CloudInit `json:"cloudInit"`
 }
 
 type VMTemplate struct {
-	ImageURL  string    `json:"imageURL"`
-	CloudInit CloudInit `json:"cloudInit"`
+	ImageURL string `json:"imageURL"`
 }
 
 type CloudInit struct {
@@ -129,22 +129,22 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save CloudInit files if fields are not empty
-	if req.VM.Template.CloudInit.MetaData != "" {
-		if err := filesystem.SaveFile(vmDir, "meta-data", []byte(req.VM.Template.CloudInit.MetaData)); err != nil {
+	if req.CloudInit.MetaData != "" {
+		if err := filesystem.SaveFile(vmDir, "meta-data", []byte(req.CloudInit.MetaData)); err != nil {
 			utils.JSONErrorResponse(w, "Failed to save 'meta-data' file", http.StatusInternalServerError)
 			return
 		}
 	}
 
-	if req.VM.Template.CloudInit.UserData != "" {
-		if err := filesystem.SaveFile(vmDir, "user-data", []byte(req.VM.Template.CloudInit.UserData)); err != nil {
+	if req.CloudInit.UserData != "" {
+		if err := filesystem.SaveFile(vmDir, "user-data", []byte(req.CloudInit.UserData)); err != nil {
 			utils.JSONErrorResponse(w, "Failed to save 'user-data' file", http.StatusInternalServerError)
 			return
 		}
 	}
 
-	if req.VM.Template.CloudInit.NetworkData != "" {
-		if err := filesystem.SaveFile(vmDir, "network-data", []byte(req.VM.Template.CloudInit.NetworkData)); err != nil {
+	if req.CloudInit.NetworkData != "" {
+		if err := filesystem.SaveFile(vmDir, "network-data", []byte(req.CloudInit.NetworkData)); err != nil {
 			utils.JSONErrorResponse(w, "Failed to save 'network-data' file", http.StatusInternalServerError)
 			return
 		}
@@ -244,23 +244,47 @@ func DeleteVMHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func BootVMHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the VM ID from the URL parameter
-	//vmID := chi.URLParam(r, "id")
+	vmID := chi.URLParam(r, "id")
+
+	// Attempt to start the VM. Log a message if it fails but respond as success.
+	if _, err := libvirt.StartDomain(vmID); err != nil {
+		log.Printf("Warning: Failed to start VM, it might be already running: %v", err)
+	}
+
+	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
 }
 
 func RestartVMHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the VM ID from the URL parameter
-	//vmID := chi.URLParam(r, "id")
+	vmID := chi.URLParam(r, "id")
+
+	// Attempt to reboot the VM. Log a message if it fails but respond as success.
+	if _, err := libvirt.RebootDomain(vmID); err != nil {
+		log.Printf("Warning: Failed to reboot VM, it might be already running: %v", err)
+	}
+
+	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
 }
 
 func ShutdownVMHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the VM ID from the URL parameter
-	//vmID := chi.URLParam(r, "id")
+	vmID := chi.URLParam(r, "id")
+
+	// Attempt to shut down the VM. Log a message if it fails but respond as success.
+	if _, err := libvirt.StopDomain(vmID); err != nil {
+		log.Printf("Warning: Failed to shut down VM, it might be already off: %v", err)
+	}
+
+	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
 }
 
 func PowerOffVMHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the VM ID from the URL parameter
-	//vmID := chi.URLParam(r, "id")
+	vmID := chi.URLParam(r, "id")
+
+	// Attempt to destroy the VM. Log a message if it fails but respond as success.
+	if _, err := libvirt.DestroyDomain(vmID); err != nil {
+		log.Printf("Warning: Failed to power off VM, it might be already off: %v", err)
+	}
+
+	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
 }
 
 func ElevateVMHandler(w http.ResponseWriter, r *http.Request) {
