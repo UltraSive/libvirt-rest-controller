@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 
 	"libvirt-controller/internal/filesystem"
+	"libvirt-controller/internal/helpers"
 	"libvirt-controller/internal/libvirt"
-	"libvirt-controller/internal/qemu"
 	"libvirt-controller/internal/server/utils"
 
 	"github.com/go-chi/chi/v5"
@@ -128,26 +128,26 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save CloudInit files if fields are not empty
-	if req.CloudInit.MetaData != "" {
-		if err := filesystem.SaveFile(vmDir, "meta-data", []byte(req.CloudInit.MetaData)); err != nil {
-			utils.JSONErrorResponse(w, "Failed to save 'meta-data' file", http.StatusInternalServerError)
-			return
+	// Save CloudInit files
+	cloudInitFiles := map[string]string{
+		"meta-data":    req.CloudInit.MetaData,
+		"user-data":    req.CloudInit.UserData,
+		"network-data": req.CloudInit.NetworkData,
+	}
+
+	for fileName, content := range cloudInitFiles {
+		if content != "" {
+			if err := filesystem.SaveFile(vmDir, fileName, []byte(content)); err != nil {
+				utils.JSONErrorResponse(w, fmt.Sprintf("Failed to save '%s' file", fileName), http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
-	if req.CloudInit.UserData != "" {
-		if err := filesystem.SaveFile(vmDir, "user-data", []byte(req.CloudInit.UserData)); err != nil {
-			utils.JSONErrorResponse(w, "Failed to save 'user-data' file", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	if req.CloudInit.NetworkData != "" {
-		if err := filesystem.SaveFile(vmDir, "network-data", []byte(req.CloudInit.NetworkData)); err != nil {
-			utils.JSONErrorResponse(w, "Failed to save 'network-data' file", http.StatusInternalServerError)
-			return
-		}
+	// Generate cloud-init ISO
+	if err := helpers.GenerateCloudInitISO(vmDir); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to create cloud-init ISO: %s", err.Error()), http.StatusInternalServerError)
+		return
 	}
 
 	// Process disk image
@@ -158,7 +158,7 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := qemu.ResizeDisk(imagePath, firstDisk.Capacity); err != nil {
+	if err := helpers.ResizeDisk(imagePath, firstDisk.Capacity); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to resize disk at %s: %v", imagePath, err), http.StatusInternalServerError)
 		return
 	}
