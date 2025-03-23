@@ -24,7 +24,7 @@ type CreateVMRequest struct {
 		Disks    []VMDisk    `json:"disks"`
 	} `json:"vm"`
 	XMLConfig string    `json:"xmlConfig"`
-	CloudInit CloudInit `json:"cloudInit"`
+	CloudInit CloudInit `json:"cloudInit,omitempty"`
 }
 
 type VMTemplate struct {

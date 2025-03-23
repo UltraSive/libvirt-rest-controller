@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"libvirt-controller/internal/cmdutil"
@@ -21,19 +22,36 @@ func ResizeDisk(imagePath string, sizeGB int) error {
 	return nil
 }
 
-// GenerateCloudInitISO creates a cloud-init ISO in the specified directory.
+// GenerateCloudInitISO creates a cloud-init ISO, including an empty one if no files are available.
 func GenerateCloudInitISO(dir string) error {
 	isoPath := filepath.Join(dir, "cloud-init.iso")
-	userData := filepath.Join(dir, "user-data")
-	metaData := filepath.Join(dir, "meta-data")
-	networkData := filepath.Join(dir, "network-data")
+	files := []string{
+		filepath.Join(dir, "user-data"),
+		filepath.Join(dir, "meta-data"),
+		filepath.Join(dir, "network-data"),
+	}
+
+	// Filter out missing files
+	var validFiles []string
+	for _, file := range files {
+		if _, err := os.Stat(file); err == nil {
+			validFiles = append(validFiles, file)
+		}
+	}
+
+	// Ensure at least one file (use /dev/null as a placeholder for an empty ISO to ensure valid libvirt XML spec)
+	if len(validFiles) == 0 {
+		validFiles = append(validFiles, "/dev/null")
+	}
 
 	_, err := cmdutil.Execute("genisoimage",
-		"-output", isoPath,
-		"-volid", "cidata",
-		"-joliet",
-		"-rock",
-		userData, metaData, networkData)
+		append([]string{
+			"-output", isoPath,
+			"-volid", "cidata",
+			"-joliet",
+			"-rock",
+		}, validFiles...)...,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create cloud-init ISO: %w", err)
 	}
