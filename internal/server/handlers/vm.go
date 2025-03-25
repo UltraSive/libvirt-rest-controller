@@ -33,6 +33,7 @@ type VMTemplate struct {
 
 type CloudInit struct {
 	MetaData    string `json:"meta-data,omitempty"`
+	VendorData  string `json:"vendor-data,omitempty"`
 	UserData    string `json:"user-data,omitempty"`
 	NetworkData string `json:"network-data,omitempty"`
 }
@@ -131,6 +132,7 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Save CloudInit files
 	cloudInitFiles := map[string]string{
 		"meta-data":    req.CloudInit.MetaData,
+		"vendor-data":  req.CloudInit.VendorData,
 		"user-data":    req.CloudInit.UserData,
 		"network-data": req.CloudInit.NetworkData,
 	}

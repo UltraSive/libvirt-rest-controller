@@ -26,8 +26,9 @@ func ResizeDisk(imagePath string, sizeGB int) error {
 func GenerateCloudInitISO(dir string) error {
 	isoPath := filepath.Join(dir, "cloud-init.iso")
 	files := []string{
-		filepath.Join(dir, "user-data"),
 		filepath.Join(dir, "meta-data"),
+		filepath.Join(dir, "vendor-data"),
+		filepath.Join(dir, "user-data"),
 		filepath.Join(dir, "network-data"),
 	}
 
