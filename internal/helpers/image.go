@@ -29,7 +29,7 @@ func GenerateCloudInitISO(dir string) error {
 		filepath.Join(dir, "meta-data"),
 		filepath.Join(dir, "vendor-data"),
 		filepath.Join(dir, "user-data"),
-		filepath.Join(dir, "network-data"),
+		filepath.Join(dir, "network-config"),
 	}
 
 	// Filter out missing files
