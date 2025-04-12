@@ -39,10 +39,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Get("/", handlers.RetrieveVMHandler)          // Get information about VM.
 			r.Patch("/", handlers.UpdateVMHandler)          // Update a VM config.
 			r.Delete("/", handlers.DeleteVMHandler)         // Delete a VM.
-			r.Post("/boot", handlers.BootVMHandler)         // Turn on the VM
-			r.Post("/restart", handlers.RestartVMHandler)   // Reboot the VM
+			r.Post("/start", handlers.StartVMHandler)       // Turn on the VM
+			r.Post("/reboot", handlers.RebootVMHandler)     // Reboot the VM
+			r.Post("/reset", handlers.RebootVMHandler)      // Reboot the VM
 			r.Post("/shutdowm", handlers.ShutdownVMHandler) // Shutdown the VM
-			r.Post("/poweroff", handlers.PowerOffVMHandler) // Power off the VM
+			r.Post("/stop", handlers.StopVMHandler)         // Power off the VM
 			r.Post("/elevate", handlers.ElevateVMHandler)   // Snapshot the VM
 			r.Post("/commit", handlers.CommitVMHandler)     // Commit snapshot changes the VM
 			r.Post("/revert", handlers.RevertVMHandler)     // Revert snapshot changes the VM

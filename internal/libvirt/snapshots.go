@@ -11,8 +11,8 @@ func TakeSnapshot(domainName string, snapshotName string, quiesce bool) (string,
 		"snapshot-create-as",
 		domainName,
 		snapshotName,
-		"--disk-only",   // create snapshot of disk only (avoid memory snapshot)
-		"--no-metadata", // skip saving metadata
+		//"--disk-only",   // create snapshot of disk only (avoid memory snapshot)
+		//"--no-metadata", // skip saving metadata
 	}
 
 	if quiesce {
@@ -22,13 +22,13 @@ func TakeSnapshot(domainName string, snapshotName string, quiesce bool) (string,
 	return cmdutil.Execute("virsh", cmd...)
 }
 
-// DiscardSnapshot reverts the VM's disk to the state of the snapshot and deletes the snapshot.
-func DiscardSnapshot(domainName string, snapshotName string) (string, error) {
+// RevertSnapshot reverts the VM's disk to the state of the snapshot and deletes the snapshot.
+func RevertSnapshot(domainName string, snapshotName string) (string, error) {
 	cmd := []string{
 		"snapshot-revert",
 		domainName,
 		snapshotName,
-		"--disk-only",
+		//"--disk-only",
 	}
 
 	return cmdutil.Execute("virsh", cmd...)

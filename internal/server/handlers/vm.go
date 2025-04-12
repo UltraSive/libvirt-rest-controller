@@ -367,7 +367,7 @@ func DeleteVMHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonResp)
 }
 
-func BootVMHandler(w http.ResponseWriter, r *http.Request) {
+func StartVMHandler(w http.ResponseWriter, r *http.Request) {
 	vmID := chi.URLParam(r, "id")
 
 	// Attempt to start the VM. Log a message if it fails but respond as success.
@@ -378,7 +378,7 @@ func BootVMHandler(w http.ResponseWriter, r *http.Request) {
 	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
 }
 
-func RestartVMHandler(w http.ResponseWriter, r *http.Request) {
+func RebootVMHandler(w http.ResponseWriter, r *http.Request) {
 	vmID := chi.URLParam(r, "id")
 
 	// Attempt to reboot the VM. Log a message if it fails but respond as success.
@@ -389,18 +389,29 @@ func RestartVMHandler(w http.ResponseWriter, r *http.Request) {
 	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
 }
 
+func ResetVMHandler(w http.ResponseWriter, r *http.Request) {
+	vmID := chi.URLParam(r, "id")
+
+	// Attempt to reset the VM. Log a message if it fails but respond as success.
+	if _, err := libvirt.ResetDomain(vmID); err != nil {
+		log.Printf("Warning: Failed to reset VM, it might be already running: %v", err)
+	}
+
+	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
+}
+
 func ShutdownVMHandler(w http.ResponseWriter, r *http.Request) {
 	vmID := chi.URLParam(r, "id")
 
 	// Attempt to shut down the VM. Log a message if it fails but respond as success.
-	if _, err := libvirt.StopDomain(vmID); err != nil {
+	if _, err := libvirt.ShutdownDomain(vmID); err != nil {
 		log.Printf("Warning: Failed to shut down VM, it might be already off: %v", err)
 	}
 
 	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
 }
 
-func PowerOffVMHandler(w http.ResponseWriter, r *http.Request) {
+func StopVMHandler(w http.ResponseWriter, r *http.Request) {
 	vmID := chi.URLParam(r, "id")
 
 	// Attempt to destroy the VM. Log a message if it fails but respond as success.
