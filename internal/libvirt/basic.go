@@ -21,7 +21,11 @@ func RebootDomain(domainName string) (string, error) {
 	return cmdutil.Execute("virsh", "reboot", domainName)
 }
 
-func StopDomain(domainName string) (string, error) {
+func ResetDomain(domainName string) (string, error) {
+	return cmdutil.Execute("virsh", "reset", domainName)
+}
+
+func ShutdownDomain(domainName string) (string, error) {
 	return cmdutil.Execute("virsh", "shutdown", domainName)
 }
 

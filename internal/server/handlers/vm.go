@@ -36,7 +36,7 @@ type CloudInit struct {
 	MetaData      string `json:"metaData,omitempty"`
 	VendorData    string `json:"vendorData,omitempty"`
 	UserData      string `json:"userData,omitempty"`
-	NetworkConfig string `json:"NetworkConfig,omitempty"`
+	NetworkConfig string `json:"networkConfig,omitempty"`
 }
 
 type VMDisk struct {
@@ -186,22 +186,44 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type VMStatusResponse struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
 func RetrieveVMHandler(w http.ResponseWriter, r *http.Request) {
-	conn, err := libvirt.GetConnection()
+	// Get the VM ID from the URL parameter
+	vmID := chi.URLParam(r, "id")
+
+	// Get domain info using the libvirt package
+	domInfo, err := libvirt.GetDomainInfo(vmID)
 	if err != nil {
-		log.Fatalf("Failed to get libvirt connection: %v", err)
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to get domain info: %s", err),
+			http.StatusInternalServerError)
+		return
 	}
 
-	domains, _, err := conn.ConnectListAllDomains(-1, 0)
+	// Parse the status from the domain info
+	status, err := helpers.ParseDomainStatus(domInfo)
 	if err != nil {
-		log.Fatalf("Failed to list domains: %v", err)
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to parse domain status: %s", err),
+			http.StatusInternalServerError)
+		return
 	}
 
-	// Log the count of domains
-	log.Printf("Total domains: %d", len(domains))
+	// Create the response object
+	response := VMStatusResponse{
+		ID:     vmID,
+		Status: status,
+	}
 
-	for _, domain := range domains {
-		log.Println("Domain:", domain.Name)
+	// Marshal the response to JSON
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to encode JSON: %s", err),
+			http.StatusInternalServerError)
+		return
 	}
 }
 
