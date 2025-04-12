@@ -437,6 +437,57 @@ func RevertVMHandler(w http.ResponseWriter, r *http.Request) {
 	//vmID := chi.URLParam(r, "id")
 }
 
+type ResetPasswordRequest struct {
+	Username string `json:"user"`
+	Password string `json:"password"`
+}
+
+func ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	vmID := chi.URLParam(r, "id")
+
+	var request ResetPasswordRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Invalid request body: %s", err),
+			http.StatusBadRequest)
+		return
+	}
+
+	if request.Username == "" || request.Password == "" {
+		utils.JSONErrorResponse(w, "Username and password are required",
+			http.StatusBadRequest)
+		return
+	}
+
+	// Construct the command to reset the password.  This is just an example,
+	// and the exact command will depend on the guest OS.  Also, BE VERY
+	// CAREFUL when constructing commands from user input to avoid command
+	// injection vulnerabilities.  Sanitize the username and password!
+	command := "chpasswd" // Example command, might be different for your OS
+	args := []string{
+		fmt.Sprintf("%s:%s", request.Username, request.Password),
+	}
+
+	// Execute the command using the qemu guest agent
+	output, err := libvirt.QemuAgentExec(vmID, command, args, true)
+	if err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to execute command: %s, Output: %s",
+			err, output), http.StatusInternalServerError)
+		return
+	}
+
+	// Return a success response
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]string{"message": "Password reset successfully", "output": output}
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to encode JSON: %s", err),
+			http.StatusInternalServerError)
+		return
+	}
+}
+
 func MigrateVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Get the VM ID from the URL parameter
 	//vmID := chi.URLParam(r, "id")
