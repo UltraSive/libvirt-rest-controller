@@ -12,6 +12,7 @@ import (
 	"libvirt-controller/internal/filesystem"
 	"libvirt-controller/internal/helpers"
 	"libvirt-controller/internal/libvirt"
+	"libvirt-controller/internal/qemu"
 	"libvirt-controller/internal/server/utils"
 
 	"github.com/go-chi/chi/v5"
@@ -186,14 +187,25 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type QemuAgentStateInfo struct {
+	Hostname   string                  `json:"hostname"`
+	OSInfo     *qemu.OSInfo            `json:"osInfo"`
+	FSInfo     []qemu.FileSystemInfo   `json:"fsInfo"`
+	Interfaces []qemu.NetworkInterface `json:"interfaces"`
+	Time       *qemu.GuestTime         `json:"time"`
+	Users      []qemu.GuestUser        `json:"users"`
+}
+
 type VMStatusResponse struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
+	ID         string              `json:"id"`
+	Status     string              `json:"status"`
+	RemoteInfo *QemuAgentStateInfo `json:"remoteState,omitempty"`
 }
 
 func RetrieveVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Get the VM ID from the URL parameter
 	vmID := chi.URLParam(r, "id")
+	includeRemote := r.URL.Query().Get("remoteState") == "true"
 
 	// Get domain info using the libvirt package
 	domInfo, err := libvirt.GetDomainInfo(vmID)
@@ -215,6 +227,29 @@ func RetrieveVMHandler(w http.ResponseWriter, r *http.Request) {
 	response := VMStatusResponse{
 		ID:     vmID,
 		Status: status,
+	}
+
+	if includeRemote {
+		if err := qemu.GuestPing(vmID); err == nil {
+			hostname, _ := qemu.GetHostName(vmID)
+			osInfo, _ := qemu.GetOSInfo(vmID)
+			fsInfo, _ := qemu.GetFileSystemInfo(vmID)
+			interfaces, _ := qemu.GetNetworkInterfaces(vmID)
+			guestTime, _ := qemu.GetGuestTime(vmID)
+			users, _ := qemu.GetLoggedInUsers(vmID)
+
+			response.RemoteInfo = &QemuAgentStateInfo{
+				Hostname:   hostname,
+				OSInfo:     osInfo,
+				FSInfo:     fsInfo,
+				Interfaces: interfaces,
+				Time:       guestTime,
+				Users:      users,
+			}
+		} else {
+			// Optionally log the issue
+			log.Printf("Guest agent not available for VM %s: %v", vmID, err)
+		}
 	}
 
 	// Marshal the response to JSON
