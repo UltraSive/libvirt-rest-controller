@@ -26,12 +26,6 @@ type DiskUsageStat struct {
 
 // SystemStatsHandler handles system statistics retrieval with disk mount points
 func SystemStatsHandler(w http.ResponseWriter, r *http.Request) {
-	// Ensure the request is a POST request
-	if r.Method != http.MethodPost {
-		utils.JSONErrorResponse(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Decode JSON request
 	var req DiskStatsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

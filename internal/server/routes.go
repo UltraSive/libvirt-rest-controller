@@ -26,28 +26,30 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.Use(AuthMiddleware) // Apply authentication
 
-	// Host-related routes
-	r.Route("/host", func(r chi.Router) {
-		r.Post("/statistics", handlers.SystemStatsHandler)
-		// Add more host-related routes here if needed
-	})
+	r.Route("/v1", func(r chi.Router) {
+		// Host-related routes
+		r.Route("/host", func(r chi.Router) {
+			r.Post("/statistics", handlers.SystemStatsHandler)
+			// Add more host-related routes here if needed
+		})
 
-	// Host-related routes
-	r.Route("/vm", func(r chi.Router) {
-		r.Post("/", handlers.CreateVMHandler) // Create a VM.
-		r.Route("/{id}", func(r chi.Router) {
-			r.Get("/", handlers.RetrieveVMHandler)          // Get information about VM.
-			r.Patch("/", handlers.UpdateVMHandler)          // Update a VM config.
-			r.Delete("/", handlers.DeleteVMHandler)         // Delete a VM.
-			r.Post("/start", handlers.StartVMHandler)       // Turn on the VM
-			r.Post("/reboot", handlers.RebootVMHandler)     // Reboot the VM
-			r.Post("/reset", handlers.RebootVMHandler)      // Reboot the VM
-			r.Post("/shutdowm", handlers.ShutdownVMHandler) // Shutdown the VM
-			r.Post("/stop", handlers.StopVMHandler)         // Power off the VM
-			r.Post("/elevate", handlers.ElevateVMHandler)   // Snapshot the VM
-			r.Post("/commit", handlers.CommitVMHandler)     // Commit snapshot changes the VM
-			r.Post("/revert", handlers.RevertVMHandler)     // Revert snapshot changes the VM
-			r.Post("/migrate", handlers.MigrateVMHandler)   // Migrate VM to new hypervisor
+		// Host-related routes
+		r.Route("/domain", func(r chi.Router) {
+			r.Post("/", handlers.CreateVMHandler) // Create a VM.
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", handlers.RetrieveVMHandler)          // Get information about VM.
+				r.Patch("/", handlers.UpdateVMHandler)          // Update a VM config.
+				r.Delete("/", handlers.DeleteVMHandler)         // Delete a VM.
+				r.Post("/start", handlers.StartVMHandler)       // Turn on the VM
+				r.Post("/reboot", handlers.RebootVMHandler)     // Reboot the VM
+				r.Post("/reset", handlers.RebootVMHandler)      // Reboot the VM
+				r.Post("/shutdowm", handlers.ShutdownVMHandler) // Shutdown the VM
+				r.Post("/stop", handlers.StopVMHandler)         // Power off the VM
+				r.Post("/elevate", handlers.ElevateVMHandler)   // Snapshot the VM
+				r.Post("/commit", handlers.CommitVMHandler)     // Commit snapshot changes the VM
+				r.Post("/revert", handlers.RevertVMHandler)     // Revert snapshot changes the VM
+				r.Post("/migrate", handlers.MigrateVMHandler)   // Migrate VM to new hypervisor
+			})
 		})
 	})
 
