@@ -11,6 +11,7 @@ import (
 
 	"libvirt-controller/internal/filesystem"
 	"libvirt-controller/internal/helpers"
+	"libvirt-controller/internal/events"
 	"libvirt-controller/internal/libvirt"
 	"libvirt-controller/internal/qemu"
 	"libvirt-controller/internal/server/utils"
@@ -157,7 +158,7 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Process disk image
 	imagePath := filepath.Join(vmDir, fmt.Sprintf("%.0f.img", firstDisk.ID))
 
-	if err := filesystem.DownloadCachedFile(req.VM.Template.ImageURL, imagePath, "/data/images", 0660); err != nil {
+	if err := filesystem.DownloadCachedFile(req.VM.Template.ImageURL, imagePath, 0660); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to download image from URL %s: %v", req.VM.Template.ImageURL, err), http.StatusInternalServerError)
 		return
 	}
@@ -264,113 +265,7 @@ func RetrieveVMHandler(w http.ResponseWriter, r *http.Request) {
 
 // UpdateVMHandler handles VM updates
 func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {
-	// Read raw request body
-	rawBody, err := io.ReadAll(r.Body)
-	if err != nil {
-		utils.JSONErrorResponse(w, "Failed to read request body", http.StatusInternalServerError)
-		return
-	}
-
-	// Decode JSON request from rawBody
-	var req VMRequest
-	if err := json.Unmarshal(rawBody, &req); err != nil {
-		utils.JSONErrorResponse(w, "Invalid JSON", http.StatusBadRequest)
-		log.Println("JSON Unmarshal error:", err)
-		return
-	}
-
-	// Validate required fields
-	if req.VM.ID == "" {
-		utils.JSONErrorResponse(w, "Missing 'vm.id'", http.StatusBadRequest)
-		return
-	}
-
-	vmID := req.VM.ID
-	firstDisk := req.VM.Disks[0]
-
-	// Create VM directory
-	vmDir := filepath.Join(firstDisk.Storage.Path, vmID)
-	if err := filesystem.CreateDirectory(vmDir, 0755); err != nil {
-		utils.JSONErrorResponse(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Remove existing files, ignoring errors if they don't exist
-	filesToRemove := []string{"server.xml", "server.json", "meta-data", "vendor-data", "user-data", "network-config"}
-	for _, fileName := range filesToRemove {
-		if err := filesystem.DeleteFile(vmDir, fileName); err != nil && !os.IsNotExist(err) {
-			utils.JSONErrorResponse(w, fmt.Sprintf("Failed to remove %s: %v", fileName, err), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	// Read the old server.json
-	oldServerJSONPath := filepath.Join(vmDir, "server.json")
-	oldServerJSON, err := os.ReadFile(oldServerJSONPath)
-	if err != nil {
-		utils.JSONErrorResponse(w, "Failed to read old server.json", http.StatusInternalServerError)
-		return
-	}
-
-	var oldReq VMRequest
-	if err := json.Unmarshal(oldServerJSON, &oldReq); err != nil {
-		utils.JSONErrorResponse(w, "Failed to parse old server.json", http.StatusInternalServerError)
-		return
-	}
-
-	// Check if disk size needs to be resized
-	for i, oldDisk := range oldReq.VM.Disks {
-		if len(req.VM.Disks) > i && req.VM.Disks[i].Capacity > oldDisk.Capacity {
-			imagePath := filepath.Join(vmDir, fmt.Sprintf("%.0f.img", oldDisk.ID))
-			if err := helpers.ResizeDisk(imagePath, req.VM.Disks[i].Capacity); err != nil {
-				utils.JSONErrorResponse(w, fmt.Sprintf("Failed to resize disk at %s: %v", imagePath, err), http.StatusInternalServerError)
-				return
-			}
-		}
-	}
-
-	// Save new JSON request
-	formattedJSON, err := json.MarshalIndent(req, "", "  ")
-	if err != nil {
-		utils.JSONErrorResponse(w, "Failed to format JSON", http.StatusInternalServerError)
-		return
-	}
-
-	if err := filesystem.SaveFile(vmDir, "server.json", formattedJSON); err != nil {
-		utils.JSONErrorResponse(w, "Failed to save server.json", http.StatusInternalServerError)
-		return
-	}
-
-	// Save new XML config
-	if err := filesystem.SaveFile(vmDir, "server.xml", []byte(req.XMLConfig)); err != nil {
-		utils.JSONErrorResponse(w, "Failed to save server.xml", http.StatusInternalServerError)
-		return
-	}
-
-	// Save CloudInit files
-	cloudInitFiles := map[string]string{
-		"meta-data":      req.CloudInit.MetaData,
-		"vendor-data":    req.CloudInit.VendorData,
-		"user-data":      req.CloudInit.UserData,
-		"network-config": req.CloudInit.NetworkConfig,
-	}
-
-	for fileName, content := range cloudInitFiles {
-		if content != "" {
-			if err := filesystem.SaveFile(vmDir, fileName, []byte(content)); err != nil {
-				utils.JSONErrorResponse(w, fmt.Sprintf("Failed to save '%s' file", fileName), http.StatusInternalServerError)
-				return
-			}
-		}
-	}
-
-	// Respond
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "VM configuration updated",
-		"vm_id":   vmID,
-		"path":    vmDir,
-	})
+ 
 }
 
 // DeleteVMHandler handles the deletion of a VM directory

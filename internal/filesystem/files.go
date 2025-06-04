@@ -67,9 +67,34 @@ func DownloadFile(url, filePath string, mode os.FileMode) error {
 	return os.Chmod(filePath, mode)
 }
 
-// downloadCachedFile manages the cache logic and uses downloadFile if necessary
-func DownloadCachedFile(url, name, cacheDir string, mode os.FileMode) error {
-	// Ensure cache directory exists
+// DownloadCachedFile manages the cache logic and uses downloadFile if necessary
+func DownloadCachedFile(url, name, mode os.FileMode) error {
+	// Get cache directory from environment
+	cacheDir := os.Getenv("CACHE_DIR")
+	useCache := cacheDir != "" // Determine if caching should be used
+
+	// Determine cache duration
+	var cacheDuration time.Duration
+	cacheSecondsStr := os.Getenv("CACHE_SECONDS")
+	if cacheSecondsStr != "" {
+		seconds, err := strconv.Atoi(cacheSecondsStr)
+		if err == nil {
+			cacheDuration = time.Duration(seconds) * time.Second
+		} else {
+			// Fallback to default if conversion fails
+			cacheDuration = 604800 * time.Second // 7 days in seconds
+		}
+	} else {
+		cacheDuration = 604800 * time.Second // Default: 7 days (604800 seconds)
+	}
+
+	// If no cache directory is set, directly download and copy the file
+	if !useCache {
+		// Download the file directly to the destination
+		return DownloadFile(url, name, mode)
+	}
+
+	// Ensure cache directory exists if caching is enabled
 	err := os.MkdirAll(cacheDir, os.ModePerm)
 	if err != nil {
 		return err
@@ -79,8 +104,8 @@ func DownloadCachedFile(url, name, cacheDir string, mode os.FileMode) error {
 	fileName := filepath.Base(url)
 	cacheFilePath := filepath.Join(cacheDir, fileName)
 
-	// Check if file is in the cache and not older than a week
-	if FileExists(cacheFilePath) && !IsFileOlderThan(cacheFilePath, 7*24*time.Hour) {
+	// Check if file is in the cache and not older than the specified duration
+	if FileExists(cacheFilePath) && !IsFileOlderThan(cacheFilePath, cacheDuration) {
 		// Copy the file from cache to the destination
 		return CopyFile(cacheFilePath, name, mode)
 	}
