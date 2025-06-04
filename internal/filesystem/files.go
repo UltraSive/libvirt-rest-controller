@@ -100,12 +100,25 @@ func DownloadCachedFile(url, name, mode os.FileMode) error {
 		return err
 	}
 
+	// Perform a cache clean-up before checking for the file
+	err = CleanCache(cacheDir, cacheDuration)
+	if err != nil {
+		// Log the error but proceed with download logic
+		fmt.Printf("Error cleaning cache directory %s: %v\n", cacheDir, err)
+	}
+
 	// Determine the filename from the URL
 	fileName := filepath.Base(url)
 	cacheFilePath := filepath.Join(cacheDir, fileName)
 
 	// Check if file is in the cache and not older than the specified duration
-	if FileExists(cacheFilePath) && !IsFileOlderThan(cacheFilePath, cacheDuration) {
+	/*if FileExists(cacheFilePath) && !IsFileOlderThan(cacheFilePath, cacheDuration) {
+		// Copy the file from cache to the destination
+		return CopyFile(cacheFilePath, name, mode)
+	}*/
+
+	// Check if file is in the cache (after cleanup)
+	if FileExists(cacheFilePath) {
 		// Copy the file from cache to the destination
 		return CopyFile(cacheFilePath, name, mode)
 	}
@@ -133,6 +146,29 @@ func IsFileOlderThan(path string, duration time.Duration) bool {
 		return true
 	}
 	return time.Since(info.ModTime()) > duration
+}
+
+// CleanCache sweeps through the cache directory and deletes files older than the specified duration.
+func CleanCache(cacheDir string, duration time.Duration) error {
+	files, err := ioutil.ReadDir(cacheDir)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue // Skip subdirectories
+		}
+		filePath := filepath.Join(cacheDir, file.Name())
+		if time.Since(file.ModTime()) > duration {
+			err := os.Remove(filePath)
+			if err != nil {
+				// Log the error but continue to clean other files
+				// fmt.Printf("Error deleting file %s: %v\n", filePath, err)
+			}
+		}
+	}
+	return nil
 }
 
 // CopyFile copies a file from src to dst with the specified mode

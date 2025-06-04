@@ -10,7 +10,8 @@ Great as a building block for custom cloud control-planes, auto-scaling clusters
 - Stateless: no local database, all state lives in libvirt
 - Full libvirt domain lifecycle: define, start, stop, reboot, undefine
 - Snapshot management
-- Pluggable auth (e.g. Bearer token)e
+- Pluggable auth (e.g. Bearer token)
+- Cached image downloads
 
 ---
 
