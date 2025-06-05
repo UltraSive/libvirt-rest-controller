@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,209 @@ import (
 
 	"github.com/go-chi/chi/v5"
 )
+
+// Request struct to handle expected JSON fields
+type DefineRequest struct {
+	ID        string `json:"id"`
+	XMLConfig string `json:"xml_config"`
+}
+
+// DefineDomainHandler handles libvirt domain creation and updates
+func DefineDomainHandler(w http.ResponseWriter, r *http.Request) {
+	// Read raw request body
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		utils.JSONErrorResponse(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure body is not empty
+	if len(rawBody) == 0 {
+		utils.JSONErrorResponse(w, "Empty request body", http.StatusBadRequest)
+		return
+	}
+
+	// Decode JSON request from rawBody
+	var req VMRequest
+	if err := json.Unmarshal(rawBody, &req); err != nil {
+		utils.JSONErrorResponse(w, "Invalid JSON", http.StatusBadRequest)
+		log.Println("JSON Unmarshal error:", err) // Print error for debugging
+		return
+	}
+
+	// Validate required fields
+	if req.ID == "" {
+		utils.JSONErrorResponse(w, "Missing 'id'", http.StatusBadRequest)
+		return
+	}
+	if req.XMLConfig == "" {
+		utils.JSONErrorResponse(w, "Missing 'xmlConfig'", http.StatusBadRequest)
+		return
+	}
+
+	vmID := req.ID
+	definitionsDir := os.Getenv("DEFINITIONS_DIR")
+
+	// Basic validation for DEFINITIONS_DIR
+	if definitionsDir == "" {
+		utils.JSONErrorResponse(w, "DEFINITIONS_DIR environment variable not set", http.StatusInternalServerError)
+		return
+	}
+
+	// Create VM directory
+	vmDir := filepath.Join(definitionsDir, vmID)
+
+	// filesystem.CreateDirectory will create the directory if it doesn't exist,
+	// and do nothing if it already exists.
+	if err := filesystem.CreateDirectory(vmDir, 0755); err != nil {
+		// Log the error for debugging
+		log.Printf("Error creating directory %s: %v", vmDir, err)
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to create VM directory: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+	// Define the domain (VM) using the saved XML configuration
+	xmlConfig := req.XMLConfig
+
+	// filesystem.SaveFile will overwrite "server.xml" if it exists,
+	// and create it if it doesn't.
+	if err := filesystem.SaveFile(vmDir, "server.xml", []byte(xmlConfig)); err != nil {
+		// Log the error for debugging
+		log.Printf("Error saving XML config to %s/server.xml: %v", vmDir, err)
+		utils.JSONErrorResponse(w, "Failed to save XML config", http.StatusInternalServerError)
+		return
+	}
+
+	// Define the domain in libvirt
+	// Ensure your libvirt.DefineDomain can handle an existing domain definition
+	// (e.g., if you're redefining, it should update or detach/attach)
+	if _, err := libvirt.DefineDomain(filepath.Join(vmDir, "server.xml")); err != nil {
+		// Log the error for debugging
+		log.Printf("Error defining domain with libvirt from %s/server.xml: %v", vmDir, err)
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to define domain: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	// Domain defined
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Domain defined",
+		"id":      vmID,
+		"path":    vmDir,
+	})
+}
+
+// DomainMiddleware ensures that a valid domain exists
+func DomainMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. Get the VM ID from the URL parameter
+		vmID := chi.URLParam(r, "id")
+		if vmID == "" {
+			utils.JSONErrorResponse(w, "VM ID missing from URL", http.StatusBadRequest)
+			return
+		}
+
+		definitionsDir := os.Getenv("DEFINITIONS_DIR")
+		if definitionsDir == "" {
+			utils.JSONErrorResponse(w, "DEFINITIONS_DIR environment variable not set", http.StatusInternalServerError)
+			return
+		}
+
+		// 2. Construct VM directory path
+		vmDir := filepath.Join(definitionsDir, vmID)
+
+		// 3. Use the helper function to check if the VM directory exists
+		exists, err := filesystem.CheckDirectoryExists(vmDir)
+		if err != nil {
+			// This catches cases where path exists but isn't a directory, or other os.Stat errors
+			fmt.Printf("Error during VM directory check %s: %v\n", vmDir, err) // Log for debugging
+			if err.Error() == fmt.Sprintf("path '%s' exists but is not a directory", vmDir) {
+				utils.JSONErrorResponse(w, fmt.Sprintf("Path '%s' exists but is not a directory for VM ID '%s'.", vmDir, vmID), http.StatusConflict)
+			} else {
+				utils.JSONErrorResponse(w, fmt.Sprintf("Failed to verify VM directory: %s", err.Error()), http.StatusInternalServerError)
+			}
+			return
+		}
+		if !exists {
+			// Directory does not exist
+			utils.JSONErrorResponse(w, fmt.Sprintf("VM directory for ID '%s' not found.", vmID), http.StatusNotFound)
+			return
+		}
+
+		// 4. Add vmID and vmDir to the request context
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, helpers.VMIDKey, vmID)
+		ctx = context.WithValue(ctx, helpers.VMDirKey, vmDir)
+
+		// 5. Proceed with the request with the updated context
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// Request struct to handle expected JSON fields
+type CloudInitRequest struct {
+	MetaData      string `json:"meta-data,omitempty"`
+	VendorData    string `json:"vendor-data,omitempty"`
+	UserData      string `json:"user-data,omitempty"`
+	NetworkConfig string `json:"network-config,omitempty"`
+}
+
+// CloudInitHandler handles cloud init image generation
+func CloudInitHandler(w http.ResponseWriter, r *http.Request) {
+	vmID := helpers.MustGetVMID(r.Context())
+	vmDir := helpers.MustGetVMDir(r.Context())
+
+	// Read raw request body
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		utils.JSONErrorResponse(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure body is not empty
+	if len(rawBody) == 0 {
+		utils.JSONErrorResponse(w, "Empty request body", http.StatusBadRequest)
+		return
+	}
+
+	// Decode JSON request from rawBody
+	var req VMRequest
+	if err := json.Unmarshal(rawBody, &req); err != nil {
+		utils.JSONErrorResponse(w, "Invalid JSON", http.StatusBadRequest)
+		log.Println("JSON Unmarshal error:", err) // Print error for debugging
+		return
+	}
+
+	// Save CloudInit files
+	cloudInitFiles := map[string]string{
+		"meta-data":      req.CloudInit.MetaData,
+		"vendor-data":    req.CloudInit.VendorData,
+		"user-data":      req.CloudInit.UserData,
+		"network-config": req.CloudInit.NetworkConfig,
+	}
+
+	for fileName, content := range cloudInitFiles {
+		if content != "" {
+			if err := filesystem.SaveFile(vmDir, fileName, []byte(content)); err != nil {
+				utils.JSONErrorResponse(w, fmt.Sprintf("Failed to save '%s' file", fileName), http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+
+	// Generate cloud-init ISO
+	if err := helpers.GenerateCloudInitISO(vmDir); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to create cloud-init ISO: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	// Respond
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "cloud-init drive generated",
+		"id":      vmID,
+		"path":    vmDir,
+	})
+}
 
 // Request struct to handle expected JSON fields
 type VMRequest struct {
@@ -372,9 +576,4 @@ func ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 			http.StatusInternalServerError)
 		return
 	}
-}
-
-func MigrateVMHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the VM ID from the URL parameter
-	//vmID := chi.URLParam(r, "id")
 }

@@ -46,6 +46,7 @@ export LISTEN_ADDR=:9090
 | NODE_ID          | false    | NODE_1         | The node ID for webhook events          |
 | LIBVIRT_URI      | false    | qemu:///system | libvirt connection URI (required)       |
 | PORT             | false    | 8080           | HTTP bind address                       |
+| DEFINITIONS_DIR  | false    | /data/vm       | Path where libvirt domain xml stored    |
 | AUTH_TOKEN       | false    | —              | Static bearer token for simple auth     |
 | WEBHOOK_ENDPOINT | false    | —              | HTTP endpoint for events                |
 | CACHE_DIR        | false    | —              | Cache for VM image templates            |

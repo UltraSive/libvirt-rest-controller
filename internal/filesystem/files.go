@@ -3,16 +3,23 @@ package filesystem
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
-// SaveFile saves data to a file in the specified directory.
-func SaveFile(dir, filename string, data []byte) error {
+// SaveFile saves data to a file within a specified directory.
+// It will overwrite the file if it already exists.
+func SaveFile(dir string, filename string, data []byte) error {
 	filePath := filepath.Join(dir, filename)
-	return os.WriteFile(filePath, data, 0644) // Write raw bytes directly
+	err := os.WriteFile(filePath, data, 0644) // 0644 is a common file permission
+	if err != nil {
+		return fmt.Errorf("failed to save file %s: %w", filePath, err)
+	}
+	return nil
 }
 
 // DeleteFile deletes a file at the specified path.
@@ -68,7 +75,7 @@ func DownloadFile(url, filePath string, mode os.FileMode) error {
 }
 
 // DownloadCachedFile manages the cache logic and uses downloadFile if necessary
-func DownloadCachedFile(url, name, mode os.FileMode) error {
+func DownloadCachedFile(url string, name string, mode os.FileMode) error {
 	// Get cache directory from environment
 	cacheDir := os.Getenv("CACHE_DIR")
 	useCache := cacheDir != "" // Determine if caching should be used
