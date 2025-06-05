@@ -11,7 +11,6 @@ import (
 
 	"libvirt-controller/internal/filesystem"
 	"libvirt-controller/internal/helpers"
-	"libvirt-controller/internal/events"
 	"libvirt-controller/internal/libvirt"
 	"libvirt-controller/internal/qemu"
 	"libvirt-controller/internal/server/utils"
@@ -21,34 +20,24 @@ import (
 
 // Request struct to handle expected JSON fields
 type VMRequest struct {
-	VM struct {
-		ID       string      `json:"id"`
-		Template *VMTemplate `json:"template"`
-		Disks    []VMDisk    `json:"disks"`
-	} `json:"vm"`
-	XMLConfig string    `json:"xmlConfig"`
-	CloudInit CloudInit `json:"cloudInit,omitempty"`
-}
-
-type VMTemplate struct {
-	ImageURL string `json:"imageURL"`
+	ID        string    `json:"id"`
+	Disks     []VMDisk  `json:"disks"`
+	XMLConfig string    `json:"xml_config"`
+	CloudInit CloudInit `json:"cloud-init,omitempty"`
 }
 
 type CloudInit struct {
-	MetaData      string `json:"metaData,omitempty"`
-	VendorData    string `json:"vendorData,omitempty"`
-	UserData      string `json:"userData,omitempty"`
-	NetworkConfig string `json:"networkConfig,omitempty"`
+	MetaData      string `json:"meta-data,omitempty"`
+	VendorData    string `json:"vendor-data,omitempty"`
+	UserData      string `json:"user-data,omitempty"`
+	NetworkConfig string `json:"network-config,omitempty"`
 }
 
 type VMDisk struct {
-	ID       float64           `json:"id"`
-	Capacity int               `json:"capacity"`
-	Storage  HypervisorStorage `json:"storage"`
-}
-
-type HypervisorStorage struct {
-	Path string `json:"path"`
+	ID       float64 `json:"id"`
+	Capacity int     `json:"capacity"`
+	Path     string  `json:"path"`
+	ImageURL string  `json:"image_url,omitempty"`
 }
 
 // CreateVMHandler handles VM creation
@@ -75,56 +64,28 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate required fields
-	if req.VM.ID == "" {
-		utils.JSONErrorResponse(w, "Missing 'vm.id'", http.StatusBadRequest)
+	if req.ID == "" {
+		utils.JSONErrorResponse(w, "Missing 'id'", http.StatusBadRequest)
 		return
 	}
 	if req.XMLConfig == "" {
 		utils.JSONErrorResponse(w, "Missing 'xmlConfig'", http.StatusBadRequest)
 		return
 	}
-	if req.VM.Template == nil || req.VM.Template.ImageURL == "" {
-		utils.JSONErrorResponse(w, "Missing 'template.imageURL'", http.StatusBadRequest)
-		return
-	}
-	if len(req.VM.Disks) == 0 {
-		utils.JSONErrorResponse(w, "Missing 'disks'", http.StatusBadRequest)
-		return
-	}
 
-	vmID := req.VM.ID
-	firstDisk := req.VM.Disks[0]
+	vmID := req.ID
+	definitionsDir := os.Getenv("DEFINITIONS_DIR")
+	firstDisk := req.Disks[0]
 
 	// Create VM directory
-	vmDir := filepath.Join(firstDisk.Storage.Path, vmID)
+	vmDir := filepath.Join(definitionsDir, vmID)
 	if err := filesystem.CreateDirectory(vmDir, 0755); err != nil {
 		utils.JSONErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Parse the full JSON request body
-	var fullRequest map[string]interface{}
-	if err := json.Unmarshal(rawBody, &fullRequest); err != nil {
-		utils.JSONErrorResponse(w, "Invalid JSON", http.StatusBadRequest)
-		log.Println("JSON Unmarshal error:", err) // Debugging
-		return
-	}
-
-	// Properly format the JSON with indentation
-	formattedJSON, err := json.MarshalIndent(fullRequest, "", "  ")
-	if err != nil {
-		utils.JSONErrorResponse(w, "Failed to format JSON", http.StatusInternalServerError)
-		return
-	}
-
-	// Save JSON request
-	if err := filesystem.SaveFile(vmDir, "server.json", formattedJSON); err != nil {
-		utils.JSONErrorResponse(w, "Failed to save request body", http.StatusInternalServerError)
-		return
-	}
-
 	// Define the domain (VM) using the saved XML configuration
-	xmlConfig := req.XMLConfig // This is the XML config for the VM
+	xmlConfig := req.XMLConfig
 
 	// Save XML config
 	if err := filesystem.SaveFile(vmDir, "server.xml", []byte(xmlConfig)); err != nil {
@@ -158,8 +119,8 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 	// Process disk image
 	imagePath := filepath.Join(vmDir, fmt.Sprintf("%.0f.img", firstDisk.ID))
 
-	if err := filesystem.DownloadCachedFile(req.VM.Template.ImageURL, imagePath, 0660); err != nil {
-		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to download image from URL %s: %v", req.VM.Template.ImageURL, err), http.StatusInternalServerError)
+	if err := filesystem.DownloadCachedFile(firstDisk.ImageURL, imagePath, 0660); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to download image from URL %s: %v", firstDisk.ImageURL.ImageURL, err), http.StatusInternalServerError)
 		return
 	}
 
@@ -173,11 +134,6 @@ func CreateVMHandler(w http.ResponseWriter, r *http.Request) {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to define domain: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
-
-	/*if _, err := libvirt.StartDomain(vmID); err != nil {
-		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to start domain: %s", err.Error()), http.StatusInternalServerError)
-		return
-	}*/
 
 	// Respond
 	w.Header().Set("Content-Type", "application/json")
@@ -265,7 +221,7 @@ func RetrieveVMHandler(w http.ResponseWriter, r *http.Request) {
 
 // UpdateVMHandler handles VM updates
 func UpdateVMHandler(w http.ResponseWriter, r *http.Request) {
- 
+
 }
 
 // DeleteVMHandler handles the deletion of a VM directory

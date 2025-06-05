@@ -18,6 +18,7 @@ type WebhookPayload struct {
 	ID        string                 `json:"id"`
 	Type      string                 `json:"type"`
 	Data      map[string]interface{} `json:"data"`
+	Message   string                 `json:"message"`
 	Timestamp string                 `json:"timestamp"`
 }
 
@@ -27,6 +28,7 @@ type WebhookPayload struct {
 func SendWebhook(
 	id string,
 	eventType string, // Renamed 'Type' to 'eventType' to avoid conflict with Go's 'type' keyword
+	message string,
 	data map[string]interface{},
 ) error {
 	// 1. Load the webhook URL and NodeID from environment variables
@@ -47,6 +49,7 @@ func SendWebhook(
 		ID:        id,
 		Type:      eventType, // Use eventType here
 		Data:      data,
+		Message:   message,
 		Timestamp: time.Now().Format(time.RFC3339), // Generate timestamp within the function
 	}
 
