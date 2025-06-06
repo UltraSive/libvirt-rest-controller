@@ -48,18 +48,18 @@ func (s *Server) RegisterRoutes() http.Handler {
 		r.Route("/domain", func(r chi.Router) {
 			r.Post("/", handlers.DefineDomainHandler) // Create a VM.
 			r.Route("/{id}", func(r chi.Router) {
-				r.Get("/", handlers.RetrieveVMHandler)           // Get information about VM.
-				r.Delete("/", handlers.DeleteVMHandler)          // Delete a VM.
-				r.Post("/cloud-init", handlers.CloudInitHandler) // Create/Update Cloud Init image
-				r.Post("/start", handlers.StartVMHandler)        // Turn on the VM
-				r.Post("/start", handlers.StartVMHandler)        // Turn on the VM
-				r.Post("/reboot", handlers.RebootVMHandler)      // Reboot the VM
-				r.Post("/reset", handlers.RebootVMHandler)       // Reboot the VM
-				r.Post("/shutdowm", handlers.ShutdownVMHandler)  // Shutdown the VM
-				r.Post("/stop", handlers.StopVMHandler)          // Power off the VM
-				r.Post("/elevate", handlers.ElevateVMHandler)    // Snapshot the VM
-				r.Post("/commit", handlers.CommitVMHandler)      // Commit snapshot changes the VM
-				r.Post("/revert", handlers.RevertVMHandler)      // Revert snapshot changes the VM
+				r.Get("/", handlers.RetrieveDomainHandler)          // Get information about VM.
+				r.Delete("/", handlers.DeleteDomainHandler)         // Delete a VM.
+				r.Post("/cloud-init", handlers.CloudInitHandler)    // Create/Update Cloud Init image
+				r.Post("/start", handlers.StartDomainHandler)       // Turn on the VM
+				r.Post("/start", handlers.StartDomainHandler)       // Turn on the VM
+				r.Post("/reboot", handlers.RebootDomainHandler)     // Reboot the VM
+				r.Post("/reset", handlers.RebootDomainHandler)      // Reboot the VM
+				r.Post("/shutdowm", handlers.ShutdownDomainHandler) // Shutdown the VM
+				r.Post("/stop", handlers.StopDomainHandler)         // Power off the VM
+				r.Post("/elevate", handlers.ElevateVMHandler)       // Snapshot the VM
+				r.Post("/commit", handlers.CommitVMHandler)         // Commit snapshot changes the VM
+				r.Post("/revert", handlers.RevertVMHandler)         // Revert snapshot changes the VM
 			})
 		})
 
