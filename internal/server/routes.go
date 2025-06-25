@@ -24,6 +24,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           300,
 	}))
 
+	r.Use(AuthMiddleware) // Apply authentication
+
 	// Health check routes
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -34,8 +36,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
-
-	r.Use(AuthMiddleware) // Apply authentication
 
 	r.Route("/v1", func(r chi.Router) {
 		// Host-related routes

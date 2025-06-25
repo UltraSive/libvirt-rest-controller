@@ -12,12 +12,16 @@ import (
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		expectedToken := os.Getenv("AUTH_TOKEN")
+
+		// If AUTH_TOKEN is not configured, proceed with the request unconditionally
 		if expectedToken == "" {
-			utils.JSONErrorResponse(w, "Server misconfiguration: AUTH_TOKEN not set", http.StatusInternalServerError)
+			next.ServeHTTP(w, r)
 			return
 		}
 
 		authHeader := r.Header.Get("Authorization")
+
+		// If AUTH_TOKEN is set, check for the Authorization header
 		if authHeader == "" {
 			utils.JSONErrorResponse(w, "Missing Authorization header", http.StatusUnauthorized)
 			return
