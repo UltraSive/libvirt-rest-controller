@@ -158,10 +158,10 @@ func DomainMiddleware(next http.Handler) http.Handler {
 
 // Request struct to handle expected JSON fields
 type CloudInitRequest struct {
-	MetaData      string `json:"meta-data,omitempty"`
-	VendorData    string `json:"vendor-data,omitempty"`
-	UserData      string `json:"user-data,omitempty"`
-	NetworkConfig string `json:"network-config,omitempty"`
+	MetaData      string `json:"metaData,omitempty"`
+	VendorData    string `json:"vendorData,omitempty"`
+	UserData      string `json:"userData,omitempty"`
+	NetworkConfig string `json:"networkConfig,omitempty"`
 }
 
 // CloudInitHandler handles cloud init image generation

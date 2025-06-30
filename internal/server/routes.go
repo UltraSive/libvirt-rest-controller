@@ -48,10 +48,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 		r.Route("/domain", func(r chi.Router) {
 			r.Post("/", handlers.DefineDomainHandler) // Create a VM.
 			r.Route("/{id}", func(r chi.Router) {
+				r.Use(handlers.DomainMiddleware)
 				r.Get("/", handlers.RetrieveDomainHandler)          // Get information about VM.
 				r.Delete("/", handlers.DeleteDomainHandler)         // Delete a VM.
 				r.Post("/cloud-init", handlers.CloudInitHandler)    // Create/Update Cloud Init image
-				r.Post("/start", handlers.StartDomainHandler)       // Turn on the VM
 				r.Post("/start", handlers.StartDomainHandler)       // Turn on the VM
 				r.Post("/reboot", handlers.RebootDomainHandler)     // Reboot the VM
 				r.Post("/reset", handlers.RebootDomainHandler)      // Reboot the VM

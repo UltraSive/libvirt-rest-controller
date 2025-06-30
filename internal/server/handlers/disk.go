@@ -15,7 +15,7 @@ import (
 
 type CreateDiskRequest struct {
 	ID       float64 `json:"id"`
-	Capacity int     `json:"capacity"`
+	Size     int     `json:"size"`
 	Path     string  `json:"path"`
 	ImageURL string  `json:"image_url,omitempty"`
 }
@@ -60,15 +60,15 @@ func CreateDiskHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := helpers.ResizeDisk(imagePath, req.Capacity); err != nil {
+	if err := helpers.ResizeDisk(imagePath, req.Size); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to resize disk at %s: %v", imagePath, err), http.StatusInternalServerError)
 		return
 	}
 }
 
-type UpdateDiskRequest struct {
-	Capacity int    `json:"capacity"`
-	Path     string `json:"path"`
+type ResizeDiskRequest struct {
+	Size int    `json:"size"`
+	Path string `json:"path"`
 }
 
 // ResizeDiskHandler handles resizing a disk for a VM
