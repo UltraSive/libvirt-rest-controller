@@ -101,12 +101,13 @@ func DefineDomainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Domain defined
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	response := map[string]interface{}{
+		"success": true,
 		"message": "Domain defined",
 		"id":      vmID,
 		"path":    vmDir,
-	})
+	}
+	utils.JSONResponse(w, response, http.StatusCreated)
 }
 
 // DomainMiddleware ensures that a valid domain exists
@@ -214,12 +215,12 @@ func CloudInitHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	response := map[string]interface{}{
 		"message": "cloud-init drive generated",
 		"id":      vmID,
 		"path":    vmDir,
-	})
+	}
+	utils.JSONResponse(w, response, http.StatusCreated)
 }
 
 type QemuAgentStateInfo struct {
@@ -288,13 +289,7 @@ func RetrieveDomainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Marshal the response to JSON
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to encode JSON: %s", err),
-			http.StatusInternalServerError)
-		return
-	}
+	utils.JSONResponse(w, response, http.StatusOK)
 }
 
 // DeleteVMHandler handles the deletion of a VM directory
@@ -321,9 +316,11 @@ func DeleteDomainHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with success.
-	jsonResp, _ := json.Marshal(map[string]string{"status": "success"})
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(jsonResp)
+	response := map[string]interface{}{
+		"success": true,
+		"message": "Domain deleted successfully",
+	}
+	utils.JSONResponse(w, response, http.StatusOK)
 }
 
 func StartDomainHandler(w http.ResponseWriter, r *http.Request) {
@@ -334,7 +331,7 @@ func StartDomainHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: Failed to start VM, it might be already running: %v", err)
 	}
 
-	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
+	utils.JSONResponse(w, map[string]interface{}{"status": "success"}, http.StatusOK)
 }
 
 func RebootDomainHandler(w http.ResponseWriter, r *http.Request) {
@@ -345,7 +342,7 @@ func RebootDomainHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: Failed to reboot VM, it might be already running: %v", err)
 	}
 
-	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
+	utils.JSONResponse(w, map[string]interface{}{"status": "success"}, http.StatusOK)
 }
 
 func ResetDomainHandler(w http.ResponseWriter, r *http.Request) {
@@ -356,7 +353,7 @@ func ResetDomainHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: Failed to reset VM, it might be already running: %v", err)
 	}
 
-	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
+	utils.JSONResponse(w, map[string]interface{}{"status": "success"}, http.StatusOK)
 }
 
 func ShutdownDomainHandler(w http.ResponseWriter, r *http.Request) {
@@ -367,7 +364,7 @@ func ShutdownDomainHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: Failed to shut down VM, it might be already off: %v", err)
 	}
 
-	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
+	utils.JSONResponse(w, map[string]interface{}{"status": "success"}, http.StatusOK)
 }
 
 func StopDomainHandler(w http.ResponseWriter, r *http.Request) {
@@ -378,7 +375,7 @@ func StopDomainHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: Failed to power off VM, it might be already off: %v", err)
 	}
 
-	utils.JSONResponse(w, map[string]string{"status": "success"}, http.StatusOK)
+	utils.JSONResponse(w, map[string]interface{}{"status": "success"}, http.StatusOK)
 }
 
 func ElevateVMHandler(w http.ResponseWriter, r *http.Request) {
@@ -436,13 +433,10 @@ func ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return a success response
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	response := map[string]string{"message": "Password reset successfully", "output": output}
-	err = json.NewEncoder(w).Encode(response)
-	if err != nil {
-		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to encode JSON: %s", err),
-			http.StatusInternalServerError)
-		return
+	response := map[string]interface{}{
+		"success": true,
+		"message": "Password reset successfully",
+		"output":  output,
 	}
+	utils.JSONResponse(w, response, http.StatusOK)
 }

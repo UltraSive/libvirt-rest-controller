@@ -14,10 +14,10 @@ import (
 )
 
 type CreateDiskRequest struct {
-	ID       float64 `json:"id"`
-	Size     int     `json:"size"`
-	Path     string  `json:"path"`
-	ImageURL string  `json:"image_url,omitempty"`
+	ID       string `json:"id"`
+	Size     int    `json:"size"`
+	Path     string `json:"path"`
+	ImageURL string `json:"image_url,omitempty"`
 }
 
 // CreateDiskHandler handles creating a disk for a VM
@@ -53,7 +53,7 @@ func CreateDiskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process disk image
-	imagePath := filepath.Join(req.Path, fmt.Sprintf("%.0f.img", req.ID))
+	imagePath := filepath.Join(req.Path, fmt.Sprintf("%s.img", req.ID))
 
 	if err := filesystem.DownloadCachedFile(req.ImageURL, imagePath, 0660); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to download image from URL %s: %v", req.ImageURL, err), http.StatusInternalServerError)
