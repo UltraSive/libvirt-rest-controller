@@ -64,6 +64,17 @@ func CreateDiskHandler(w http.ResponseWriter, r *http.Request) {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to resize disk at %s: %v", imagePath, err), http.StatusInternalServerError)
 		return
 	}
+
+	// Respond with success
+	response := map[string]interface{}{
+		"message": "Disk created successfully",
+		"disk": map[string]interface{}{
+			"id":   req.ID,
+			"path": imagePath,
+			"size": req.Size,
+		},
+	}
+	utils.JSONResponse(w, response, http.StatusCreated)
 }
 
 type ResizeDiskRequest struct {
@@ -73,7 +84,44 @@ type ResizeDiskRequest struct {
 
 // ResizeDiskHandler handles resizing a disk for a VM
 func ResizeDiskHandler(w http.ResponseWriter, r *http.Request) {
+	// Read raw request body
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		utils.JSONErrorResponse(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
 
+	// Ensure body is not empty
+	if len(rawBody) == 0 {
+		utils.JSONErrorResponse(w, "Empty request body", http.StatusBadRequest)
+		return
+	}
+
+	// Decode JSON request from rawBody
+	var req ResizeDiskRequest
+	if err := json.Unmarshal(rawBody, &req); err != nil {
+		utils.JSONErrorResponse(w, "Invalid JSON", http.StatusBadRequest)
+		log.Println("JSON Unmarshal error:", err) // Print error for debugging
+		return
+	}
+
+	// Validate the disk file existence
+	if !filesystem.FileExists(req.Path) {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Disk image at %s does not exist", req.Path), http.StatusNotFound)
+		return
+	}
+
+	// Resize the disk
+	if err := helpers.ResizeDisk(req.Path, req.Size); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to resize disk at %s: %v", req.Path, err), http.StatusInternalServerError)
+		return
+	}
+
+	// Respond with success
+	response := map[string]string{
+		"message": fmt.Sprintf("Disk at %s successfully resized to %d GB", req.Path, req.Size),
+	}
+	utils.JSONResponse(w, response, http.StatusOK)
 }
 
 type DeleteDiskRequest struct {
@@ -82,7 +130,38 @@ type DeleteDiskRequest struct {
 
 // DeleteDiskHandler handles deleting a VM disk
 func DeleteDiskHandler(w http.ResponseWriter, r *http.Request) {
+	// Read raw request body
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		utils.JSONErrorResponse(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
 
+	// Ensure body is not empty
+	if len(rawBody) == 0 {
+		utils.JSONErrorResponse(w, "Empty request body", http.StatusBadRequest)
+		return
+	}
+
+	// Decode JSON request from rawBody
+	var req DeleteDiskRequest
+	if err := json.Unmarshal(rawBody, &req); err != nil {
+		utils.JSONErrorResponse(w, "Invalid JSON", http.StatusBadRequest)
+		log.Println("JSON Unmarshal error:", err) // Print error for debugging
+		return
+	}
+
+	// Delete the disk file
+	if err := filesystem.DeleteFile(filepath.Dir(req.Path), filepath.Base(req.Path)); err != nil {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to delete disk at %s: %v", req.Path, err), http.StatusInternalServerError)
+		return
+	}
+
+	// Respond with success
+	response := map[string]string{
+		"message": fmt.Sprintf("Disk at %s successfully deleted", req.Path),
+	}
+	utils.JSONResponse(w, response, http.StatusOK)
 }
 
 // MigrateDiskHandler handles migrating a VM disk to another node
