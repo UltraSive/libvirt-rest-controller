@@ -14,7 +14,7 @@ import (
 )
 
 type CreateDiskRequest struct {
-	ID       string `json:"id"`
+	Name     string `json:"name"`
 	Size     int    `json:"size"`
 	Path     string `json:"path"`
 	ImageURL string `json:"image_url,omitempty"`
@@ -53,7 +53,7 @@ func CreateDiskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process disk image
-	imagePath := filepath.Join(req.Path, fmt.Sprintf("%s.img", req.ID))
+	imagePath := filepath.Join(req.Path, req.Name)
 
 	if err := filesystem.DownloadCachedFile(req.ImageURL, imagePath, 0660); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to download image from URL %s: %v", req.ImageURL, err), http.StatusInternalServerError)
@@ -67,9 +67,10 @@ func CreateDiskHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Respond with success
 	response := map[string]interface{}{
+		"success": true,
 		"message": "Disk created successfully",
 		"disk": map[string]interface{}{
-			"id":   req.ID,
+			"name": req.Name,
 			"path": imagePath,
 			"size": req.Size,
 		},
@@ -118,7 +119,8 @@ func ResizeDiskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with success
-	response := map[string]string{
+	response := map[string]interface{}{
+		"success": true,
 		"message": fmt.Sprintf("Disk at %s successfully resized to %d GB", req.Path, req.Size),
 	}
 	utils.JSONResponse(w, response, http.StatusOK)
@@ -158,7 +160,8 @@ func DeleteDiskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with success
-	response := map[string]string{
+	response := map[string]interface{}{
+		"success": true,
 		"message": fmt.Sprintf("Disk at %s successfully deleted", req.Path),
 	}
 	utils.JSONResponse(w, response, http.StatusOK)

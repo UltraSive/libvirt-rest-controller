@@ -41,6 +41,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// Host-related routes
 		r.Route("/host", func(r chi.Router) {
 			r.Post("/statistics", handlers.SystemStatsHandler)
+			r.Post("/hash", handlers.HashPasswordHandler)
 			// Add more host-related routes here if needed
 		})
 

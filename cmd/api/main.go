@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"libvirt-controller/internal/metrics"
 	"libvirt-controller/internal/server"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func gracefulShutdown(apiServer *http.Server, done chan bool) {
@@ -37,21 +40,44 @@ func gracefulShutdown(apiServer *http.Server, done chan bool) {
 }
 
 func main() {
+	apiServer := server.NewServer()
 
-	server := server.NewServer()
+	// Register your libvirt collector
+	collector := metrics.NewLibvirtCollector()
+	prometheus.MustRegister(collector)
 
-	// Create a done channel to signal when the shutdown is complete
-	done := make(chan bool, 1)
-
-	// Run graceful shutdown in a separate goroutine
-	go gracefulShutdown(server, done)
-
-	err := server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		panic(fmt.Sprintf("http server error: %s", err))
+	// Metrics server
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsServer := &http.Server{
+		Addr:    ":9100",
+		Handler: metricsMux,
 	}
 
-	// Wait for the graceful shutdown to complete
+	// Graceful shutdown done channel
+	done := make(chan bool, 1)
+
+	// Run graceful shutdown for API and Metrics servers
+	go gracefulShutdown(apiServer, done)
+	go gracefulShutdown(metricsServer, done)
+
+	// Start servers
+	go func() {
+		log.Println("API server listening on :8080")
+		if err := apiServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("API server error: %v", err)
+		}
+	}()
+
+	go func() {
+		log.Println("Metrics server listening on :9100")
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Metrics server error: %v", err)
+		}
+	}()
+
+	// Wait for shutdown
 	<-done
-	log.Println("Graceful shutdown complete.")
+	<-done
+	log.Println("All servers shut down cleanly.")
 }

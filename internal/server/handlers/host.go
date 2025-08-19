@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"libvirt-controller/internal/cmdutil"
 	"libvirt-controller/internal/server/utils"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -90,4 +92,37 @@ func SystemStatsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("error marshalling response: %v", err)
 		utils.JSONErrorResponse(w, "Internal Server Error", http.StatusInternalServerError)
 	}
+}
+
+// Read the possible password from the request body
+type HashPasswordRequest struct {
+	Password string `json:"password"`
+}
+
+func HashPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	// Decode JSON request
+	var req HashPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.JSONErrorResponse(w, "Invalid JSON request", http.StatusBadRequest)
+		log.Printf("error decoding request body: %v", err)
+		return
+	}
+
+	// Run mkpasswd command with SHA-512 hashing
+	hashedPassword, err := cmdutil.Execute("mkpasswd", "-m", "sha-512", "-s", req.Password)
+	if err != nil {
+		log.Printf("Error generating hashed password: %v", err)
+		utils.JSONResponse(w, map[string]interface{}{"error": "Error generating hashed password"}, http.StatusInternalServerError)
+		return
+	}
+
+	// Trim any trailing whitespace/newlines from the hashed password
+	hashedPassword = strings.TrimSpace(hashedPassword)
+
+	// Respond with the hashed password
+	response := map[string]interface{}{
+		"success": true,
+		"hashed":  hashedPassword,
+	}
+	utils.JSONResponse(w, response, http.StatusOK)
 }
