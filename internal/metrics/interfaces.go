@@ -6,15 +6,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type LibvirtCollector struct {
+type LibvirtInterfaceCollector struct {
 	rxBytes   *prometheus.Desc
 	txBytes   *prometheus.Desc
 	rxPackets *prometheus.Desc
 	txPackets *prometheus.Desc
 }
 
-func NewLibvirtCollector() *LibvirtCollector {
-	return &LibvirtCollector{
+func NewLibvirtInterfaceCollector() *LibvirtInterfaceCollector {
+	return &LibvirtInterfaceCollector{
 		rxBytes: prometheus.NewDesc(
 			"libvirt_domain_interface_rx_bytes_total",
 			"Received bytes on a domain interface",
@@ -42,14 +42,14 @@ func NewLibvirtCollector() *LibvirtCollector {
 	}
 }
 
-func (c *LibvirtCollector) Describe(ch chan<- *prometheus.Desc) {
+func (c *LibvirtInterfaceCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.rxBytes
 	ch <- c.txBytes
 	ch <- c.rxPackets
 	ch <- c.txPackets
 }
 
-func (c *LibvirtCollector) Collect(ch chan<- prometheus.Metric) {
+func (c *LibvirtInterfaceCollector) Collect(ch chan<- prometheus.Metric) {
 	domains := libvirt.GetDomains()
 	for _, d := range domains {
 		ifaces := libvirt.GetDomainIfaces(d)

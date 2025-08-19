@@ -2,7 +2,24 @@ package libvirt
 
 import (
 	"libvirt-controller/internal/cmdutil"
+	"log"
+	"strings"
 )
+
+func GetDomains() []string {
+	out, err := cmdutil.Execute("virsh", "list", "--name")
+	if err != nil {
+		log.Printf("error listing libvirt domains")
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	var domains []string
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			domains = append(domains, l)
+		}
+	}
+	return domains
+}
 
 // DefineDomain defines a domain from an XML file
 func DefineDomain(xmlConfigPath string) (string, error) {

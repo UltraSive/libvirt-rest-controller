@@ -8,21 +8,6 @@ import (
 )
 
 // For Metrics
-func GetDomains() []string {
-	out, err := cmdutil.Execute("virsh", "list", "--name")
-	if err != nil {
-		log.Printf("error listing libvirt domains")
-	}
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	var domains []string
-	for _, l := range lines {
-		if strings.TrimSpace(l) != "" {
-			domains = append(domains, l)
-		}
-	}
-	return domains
-}
-
 type ifaceInfo struct {
 	Name string
 	Mac  string

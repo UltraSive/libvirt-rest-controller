@@ -43,8 +43,10 @@ func main() {
 	apiServer := server.NewServer()
 
 	// Register your libvirt collector
-	collector := metrics.NewLibvirtCollector()
-	prometheus.MustRegister(collector)
+	interfaceCollector := metrics.NewLibvirtInterfaceCollector()
+	prometheus.MustRegister(interfaceCollector)
+	diskCollector := metrics.NewLibvirtDiskCollector()
+	prometheus.MustRegister(diskCollector)
 
 	// Metrics server
 	metricsMux := http.NewServeMux()
