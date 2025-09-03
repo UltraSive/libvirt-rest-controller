@@ -1,0 +1,14 @@
+[Unit]
+Description=Libvirt Controller REST API
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/virt-api
+Restart=always
+# User=root
+User=libvirt
+Group=libvirt
+Environment=PORT=8080
+
+[Install]
+WantedBy=multi-user.target
