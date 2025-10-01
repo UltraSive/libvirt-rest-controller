@@ -8,7 +8,7 @@ Restart=always
 # User=root
 User=libvirt
 Group=libvirt
-Environment=PORT=8080
+EnvironmentFile=/etc/virt-api.env
 
 [Install]
 WantedBy=multi-user.target

@@ -11,6 +11,8 @@ import (
 	"libvirt-controller/internal/filesystem"
 	"libvirt-controller/internal/helpers"
 	"libvirt-controller/internal/server/utils"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type CreateDiskRequest struct {
@@ -85,6 +87,8 @@ type ResizeDiskRequest struct {
 
 // ResizeDiskHandler handles resizing a disk for a VM
 func ResizeDiskHandler(w http.ResponseWriter, r *http.Request) {
+	diskID := chi.URLParam(r, "id") // get disk ID from path
+
 	// Read raw request body
 	rawBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -106,14 +110,17 @@ func ResizeDiskHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Construct file path
+	filePath := filepath.Join(req.Path, diskID+".img")
+
 	// Validate the disk file existence
-	if !filesystem.FileExists(req.Path) {
+	if !filesystem.FileExists(filePath) {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Disk image at %s does not exist", req.Path), http.StatusNotFound)
 		return
 	}
 
 	// Resize the disk
-	if err := helpers.ResizeDisk(req.Path, req.Size); err != nil {
+	if err := helpers.ResizeDisk(filePath, req.Size); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to resize disk at %s: %v", req.Path, err), http.StatusInternalServerError)
 		return
 	}
@@ -121,7 +128,7 @@ func ResizeDiskHandler(w http.ResponseWriter, r *http.Request) {
 	// Respond with success
 	response := map[string]interface{}{
 		"success": true,
-		"message": fmt.Sprintf("Disk at %s successfully resized to %d GB", req.Path, req.Size),
+		"message": fmt.Sprintf("Disk at %s successfully resized to %d GB", filePath, req.Size),
 	}
 	utils.JSONResponse(w, response, http.StatusOK)
 }
@@ -132,6 +139,8 @@ type DeleteDiskRequest struct {
 
 // DeleteDiskHandler handles deleting a VM disk
 func DeleteDiskHandler(w http.ResponseWriter, r *http.Request) {
+	diskID := chi.URLParam(r, "id") // get disk ID from path
+
 	// Read raw request body
 	rawBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -153,8 +162,16 @@ func DeleteDiskHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Construct file path
+	filePath := filepath.Join(req.Path, diskID+".img")
+
+	if !filesystem.FileExists(filePath) {
+		utils.JSONErrorResponse(w, fmt.Sprintf("Disk image %s does not exist", filePath), http.StatusNotFound)
+		return
+	}
+
 	// Delete the disk file
-	if err := filesystem.DeleteFile(filepath.Dir(req.Path), filepath.Base(req.Path)); err != nil {
+	if err := filesystem.DeleteFile(filepath.Dir(filePath), filepath.Base(filePath)); err != nil {
 		utils.JSONErrorResponse(w, fmt.Sprintf("Failed to delete disk at %s: %v", req.Path, err), http.StatusInternalServerError)
 		return
 	}
@@ -162,7 +179,7 @@ func DeleteDiskHandler(w http.ResponseWriter, r *http.Request) {
 	// Respond with success
 	response := map[string]interface{}{
 		"success": true,
-		"message": fmt.Sprintf("Disk at %s successfully deleted", req.Path),
+		"message": fmt.Sprintf("Disk at %s successfully deleted", filePath),
 	}
 	utils.JSONResponse(w, response, http.StatusOK)
 }
